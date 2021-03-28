@@ -12,23 +12,24 @@ type State interface {
 	Hash() [16]byte          // returns the hash of the board
 	Turn() chess.Color       // Turn returns the color to move next.
 	MoveNumber() int         // returns count of moves so far that led to this point.
-	LastMove() Move          // returns the last move that was made
+	LastMove() Move          // returns the last move that was made.
 	NNToMove(idx int64) Move // returns move from neural network encoding output space.
 
 	// Meta-game stuff
 	Ended() (ended bool, winner chess.Color) // has the game ended? if yes, then who's the winner?
 
 	// Meta-game stuff
-	Score(p chess.Color) float32 // score of the given player
+	Score(p chess.Color) float32 // score of the given player.
 
 	// interactions
-	Check(m Move) bool  // check if the placement is legal
+	Check(m Move) bool  // check if the placement is legal.
 	Apply(m Move) State // should return a GameState. The required side effect is the NextToMove has to change.
-	Reset()             // reset state
+	Reset()             // reset state.
 
 	// For MCTS
 	UndoLastMove()
 	Fwd()
+	InputEncoder() []float32 // encode board position to neural network input.
 
 	// generics
 	Eq(other State) bool
