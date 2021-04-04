@@ -12,9 +12,10 @@ import (
 
 type Chess struct {
 	sync.Mutex
-	history     []*chess.Game
-	actionSpace map[int64]Move
-	histPtr     int
+	history            []*chess.Game
+	actionSpace        map[int32]Move
+	reverseActionSpace map[Move]int32
+	histPtr            int
 }
 
 // ChessGame returns new Chess game state.
@@ -29,18 +30,23 @@ func ChessGame(movesFile string) *Chess {
 
 	scanner := bufio.NewScanner(f)
 
-	actionSpace := make(map[int64]Move)
-	var idx int64
+	actionSpace := make(map[int32]Move)
+	reverseActionSpace := make(map[Move]int32)
+	var idx int32
 	for scanner.Scan() {
-		actionSpace[idx] = Move(scanner.Text())
+		m := Move(scanner.Text())
+		actionSpace[idx] = m
+		reverseActionSpace[m] = idx
 		idx++
 	}
+	actionSpace[Resign] = ResignMove
+	reverseActionSpace[ResignMove] = Resign
 
 	if err := scanner.Err(); err != nil {
 		log.Fatal(err)
 	}
 
-	// new game with UCI notation.
+	// new game with UCI notation
 	g := chess.NewGame()
 	return &Chess{
 		Mutex:       sync.Mutex{},
@@ -52,6 +58,10 @@ func ChessGame(movesFile string) *Chess {
 
 func (g *Chess) ActionSpace() int {
 	return len(g.actionSpace)
+}
+
+func (g *Chess) Board() *chess.Board {
+	return g.history[g.histPtr].Position().Board()
 }
 
 func (g *Chess) Hash() [16]byte {
@@ -66,16 +76,16 @@ func (g *Chess) MoveNumber() int {
 	return g.histPtr
 }
 
-func (g *Chess) LastMove() Move {
-	if g.histPtr == 0 { // at the beginning no move.
-		return ""
+func (g *Chess) LastMove() int32 {
+	if g.histPtr == 0 { // at the beginning no move
+		return -1
 	}
 	lastG := g.history[g.histPtr]
 	moveHist := lastG.Moves()
-	return Move(moveHist[len(moveHist)-1].String())
+	return g.reverseActionSpace[Move(moveHist[len(moveHist)-1].String())]
 }
 
-func (g *Chess) NNToMove(idx int64) Move {
+func (g *Chess) NNToMove(idx int32) Move {
 	if m, ok := g.actionSpace[idx]; !ok {
 		panic(fmt.Sprintf("index out of range: %d", idx))
 	} else {
@@ -102,6 +112,10 @@ func (g *Chess) Ended() (ended bool, winner chess.Color) {
 	return
 }
 
+func (g *Chess) Resign(color chess.Color) {
+	g.history[g.histPtr].Resign(color)
+}
+
 func (g *Chess) Score(p chess.Color) float32 {
 	r := g.history[g.histPtr].Outcome()
 	if r == chess.Draw || r == chess.NoOutcome {
@@ -114,7 +128,7 @@ func (g *Chess) Score(p chess.Color) float32 {
 		} else {
 			return -1
 		}
-	} else {
+	} else { // white won.
 		if p == chess.Black {
 			return -1
 		} else {
@@ -140,7 +154,11 @@ func (g *Chess) Apply(m Move) State {
 		panic(err)
 	}
 	g.histPtr++
-	if g.histPtr >= len(g.history) {
+	if g.histPtr > len(g.history) {
+		panic(fmt.Sprintf("history pointer %d cannot be larger than history len %d",
+			g.histPtr, len(g.history)))
+	}
+	if g.histPtr == len(g.history) {
 		g.history = append(g.history, newG)
 	} else {
 		g.history[g.histPtr] = newG
@@ -149,7 +167,7 @@ func (g *Chess) Apply(m Move) State {
 }
 
 func (g *Chess) Reset() {
-	g.history = g.history[:1] // reset to first state.
+	g.history = g.history[:1] // reset to first state
 	g.histPtr = 0
 }
 
@@ -163,26 +181,6 @@ func (g *Chess) Fwd() {
 	if g.histPtr < len(g.history)-1 {
 		g.histPtr++
 	}
-}
-
-func (g *Chess) InputEncoder() []float32 {
-	m := g.history[g.histPtr].Position().Board().SquareMap()
-	board := make([]float32, len(m))
-	for k, v := range m {
-		if v == chess.NoPiece {
-			board[int8(k)] = 0.001
-		} else {
-			board[int8(k)] = float32(v)
-		}
-	}
-
-	playerLayer := make([]float32, len(m))
-	next := g.Turn()
-	for i := range playerLayer {
-		playerLayer[i] = float32(next)
-	}
-	inputLayer := append(board, playerLayer...)
-	return inputLayer
 }
 
 func (g *Chess) Eq(other State) bool {
@@ -199,10 +197,13 @@ func (g *Chess) Clone() State {
 	n := &Chess{
 		Mutex:       sync.Mutex{},
 		history:     nil,
-		actionSpace: g.actionSpace,
+		actionSpace: make(map[int32]Move, 0),
 		histPtr:     g.histPtr,
 	}
 	copy(n.history, g.history)
+	for k, v := range g.actionSpace {
+		n.actionSpace[k] = v
+	}
 	g.Unlock()
 	return n
 }
