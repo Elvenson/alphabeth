@@ -116,27 +116,6 @@ func (g *Chess) Resign(color chess.Color) {
 	g.history[g.histPtr].Resign(color)
 }
 
-func (g *Chess) Score(p chess.Color) float32 {
-	r := g.history[g.histPtr].Outcome()
-	if r == chess.Draw || r == chess.NoOutcome {
-		return 0
-	}
-
-	if r == chess.BlackWon {
-		if p == chess.Black {
-			return 1
-		} else {
-			return -1
-		}
-	} else { // white won.
-		if p == chess.Black {
-			return -1
-		} else {
-			return 1
-		}
-	}
-}
-
 func (g *Chess) Check(m Move) bool {
 	moves := g.history[g.histPtr].ValidMoves()
 	for _, move := range moves {

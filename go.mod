@@ -5,6 +5,7 @@ go 1.14
 require (
 	github.com/chewxy/math32 v1.0.7-0.20210223031236-a3549c8cb6a9
 	github.com/gorgonia/agogo v0.1.1
+	github.com/hashicorp/go-multierror v1.1.1
 	github.com/notnil/chess v1.5.0
 	github.com/pkg/errors v0.9.1
 	github.com/stretchr/testify v1.7.0

@@ -26,9 +26,6 @@ type State interface {
 	Ended() (ended bool, winner chess.Color) // has the game ended? if yes, then who's the winner?
 	Resign(color chess.Color)                // current player resign the game.
 
-	// Meta-game stuff
-	Score(p chess.Color) float32 // score of the given player.
-
 	// interactions
 	Check(m Move) bool  // check if the placement is legal.
 	Apply(m Move) State // should return a GameState. The required side effect is the NextToMove has to change.
