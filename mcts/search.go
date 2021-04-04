@@ -413,16 +413,10 @@ func (t *MCTS) newRootState() bool {
 func (t *MCTS) updateRoot() {
 	t.freeables = t.freeables[:0]
 	if !t.newRootState() || t.searchState.root == nilNode {
-		// TODO: Should randomize this instead of for loop.
-		for i := 0; i < t.searchState.current.ActionSpace(); i++ {
-			if t.searchState.current.Check(t.searchState.current.NNToMove(int32(i))) {
-				t.searchState.root = t.New(int32(i), 0, 0)
-				break
-			}
-		}
+		t.searchState.root = t.New(game.Begin, 0, 0)
 	}
 
-	t.log("freables %d", len(t.freeables))
+	t.log("freeables %d", len(t.freeables))
 	t.searchState.prev = nil
 	root := t.nodeFromNaughty(t.searchState.root)
 	atomic.StoreInt32(&t.nc, int32(root.countChildren()))
@@ -432,5 +426,4 @@ func (t *MCTS) updateRoot() {
 	if len(children) == 0 {
 		atomic.StoreUint32(&root.minPSARatioChildren, defaultMinPsaRatio)
 	}
-
 }

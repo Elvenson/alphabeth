@@ -6,6 +6,7 @@ import "github.com/notnil/chess"
 type Move string
 
 const (
+	Begin      = -3
 	Resign     = -2
 	ResignMove = Move("resign")
 )
