@@ -21,7 +21,6 @@ func DefaultConf(m, n, actionSpace int) Config {
 		K:            k,
 		SharedLayers: m,
 		FC:           2 * k,
-
 		BatchSize:   256,
 		Width:       n,
 		Height:      m,

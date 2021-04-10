@@ -23,8 +23,6 @@ type Config struct {
 	Budget            int32 // iteration budget
 	RandomMinVisits   uint32
 	RandomTemperature float32
-	DumbPass          bool
-	ResignPercentage  float32
 }
 
 func DefaultConfig(boardSize int) Config {
@@ -33,7 +31,6 @@ func DefaultConfig(boardSize int) Config {
 		Timeout:  100 * time.Millisecond,
 		M:        boardSize,
 		N:        boardSize,
-		DumbPass: true,
 		Budget:   10000,
 	}
 }

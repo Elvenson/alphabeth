@@ -12,7 +12,7 @@ import (
 
 type Chess struct {
 	sync.Mutex
-	history            []*chess.Game
+	history            []chess.Game
 	actionSpace        map[int32]Move
 	reverseActionSpace map[Move]int32
 	histPtr            int
@@ -39,18 +39,16 @@ func ChessGame(movesFile string) *Chess {
 		reverseActionSpace[m] = idx
 		idx++
 	}
-	actionSpace[Resign] = ResignMove
-	reverseActionSpace[ResignMove] = Resign
 
 	if err := scanner.Err(); err != nil {
 		log.Fatal(err)
 	}
 
 	// new game with UCI notation
-	g := chess.NewGame()
+	g := chess.NewGame(chess.UseNotation(chess.UCINotation{}))
 	return &Chess{
 		Mutex:       sync.Mutex{},
-		history:     []*chess.Game{g},
+		history:     []chess.Game{*g},
 		actionSpace: actionSpace,
 		histPtr:     0,
 	}
@@ -119,7 +117,8 @@ func (g *Chess) Resign(color chess.Color) {
 func (g *Chess) Check(m Move) bool {
 	moves := g.history[g.histPtr].ValidMoves()
 	for _, move := range moves {
-		if m == Move(move.String()) {
+		a := move.String()
+		if m == Move(a) {
 			return true
 		}
 	}
@@ -138,9 +137,9 @@ func (g *Chess) Apply(m Move) State {
 			g.histPtr, len(g.history)))
 	}
 	if g.histPtr == len(g.history) {
-		g.history = append(g.history, newG)
+		g.history = append(g.history, *newG)
 	} else {
-		g.history[g.histPtr] = newG
+		g.history[g.histPtr] = *newG
 	}
 	return g
 }
@@ -175,7 +174,7 @@ func (g *Chess) Clone() State {
 	g.Lock()
 	n := &Chess{
 		Mutex:       sync.Mutex{},
-		history:     nil,
+		history:     make([]chess.Game, len(g.history)),
 		actionSpace: make(map[int32]Move, 0),
 		histPtr:     g.histPtr,
 	}

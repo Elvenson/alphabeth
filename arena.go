@@ -70,53 +70,44 @@ func MakeArena(g game.State, a, b Dualer, conf mcts.Config, enc GameEncoder, nam
 	}
 }
 
-// NewArena makes an arena an returns a pointer to the Arena
-func NewArena(g game.State, a, b Dualer, conf mcts.Config, enc GameEncoder, aug Augmenter, name string) *Arena {
-	ar := MakeArena(g, a, b, conf, enc, name)
-	ar.logger = log.New(&ar.buf, "", log.Ltime)
-	return &ar
+func setupSelfPlay(agent *Agent) error {
+	if err := agent.SwitchToInference(); err != nil {
+		return err
+	}
+	return nil
 }
 
-// Play plays a game, and returns a winner. If it is a draw, the returned colour is None.
-func (a *Arena) Play(record bool) (examples []Example) {
-	// set the current agent as white piece
-	a.currentPlayer = a.currentAgent
-	a.currentAgent.Player = chess.White
-	a.bestAgent.Player = chess.Black
-	a.logger.Printf("Playing. Recording %t\n", record)
+// SelfPlays lets the agent to generate training data by playing with itself.
+func (a *Arena) SelfPlay() (examples []Example, err error) {
+	a.logger.Printf("Self playing\n")
 	a.logger.SetPrefix("\t\t")
+	if err := setupSelfPlay(a.currentAgent); err != nil {
+		return nil, err
+	}
 
 	var winner chess.Color
 	var ended bool
 	for ended, winner = a.game.Ended(); !ended; ended, winner = a.game.Ended() {
-		best := a.currentPlayer.Search(a.game)
+		best := a.currentAgent.Search(a.game)
 		if best == game.ResignMove {
 			break
 		}
 
-		a.logger.Printf("Current Player: %v. Best Move %v\n", a.currentPlayer.Player, best)
-		if record {
-			boards := a.currentPlayer.Enc(a.game)
-			policies := a.currentPlayer.MCTS.Policies(a.game)
-			ex := Example{
-				Board:  boards,
-				Policy: policies,
-				// THIS IS A HACK.
-				// The value is 1 or -1 depending on player colour, but for now we store the player colour for this turn
-				Value: float32(a.currentPlayer.Player),
-			}
-			if validPolicies(policies) {
-				examples = append(examples, ex)
-			}
-
+		log.Printf("Current Player: %v. Best Move %v\n", a.game.Turn(), best)
+		boards := a.currentAgent.Enc(a.game)
+		policies := a.currentAgent.MCTS.Policies(a.game)
+		ex := Example{
+			Board:  boards,
+			Policy: policies,
+			// THIS IS A HACK.
+			// The value is 1 or -1 depending on player colour, but for now we store the player colour for this turn
+			Value: float32(a.currentAgent.Player),
 		}
-
+		if validPolicies(policies) {
+			examples = append(examples, ex)
+		}
 		a.game = a.game.Apply(best)
-		a.switchPlayer()
 	}
-	a.logger.SetPrefix("\t")
-	a.currentAgent.MCTS.Reset()
-	a.bestAgent.MCTS.Reset()
 
 	for i := range examples {
 		switch {
@@ -128,7 +119,39 @@ func (a *Arena) Play(record bool) (examples []Example) {
 			examples[i].Value = -1
 		}
 	}
-	var winningAgent *Agent
+
+	a.currentAgent.MCTS.Reset()
+	a.game.Reset()
+	runtime.GC()
+
+	a.currentAgent.MCTS = mcts.New(a.game, a.conf, a.currentAgent)
+
+	return examples, nil
+}
+
+// Play plays a game, and records who is the winner. If it is a draw, the returned colour is None.
+func (a *Arena) Play() {
+	// set the current agent as white piece
+	a.currentPlayer = a.currentAgent
+	a.currentAgent.Player = chess.White
+	a.bestAgent.Player = chess.Black
+
+	var winner chess.Color
+	var ended bool
+	for ended, winner = a.game.Ended(); !ended; ended, winner = a.game.Ended() {
+		best := a.currentPlayer.Search(a.game)
+		if best == game.ResignMove {
+			break
+		}
+		a.game = a.game.Apply(best)
+		a.switchPlayer()
+	}
+
+	a.currentAgent.MCTS.Reset()
+	a.bestAgent.MCTS.Reset()
+	a.game.Reset()
+	runtime.GC()
+
 	switch {
 	case winner == chess.NoColor:
 		a.currentAgent.Draw++
@@ -136,19 +159,15 @@ func (a *Arena) Play(record bool) (examples []Example) {
 	case winner == a.currentAgent.Player:
 		a.currentAgent.Wins++
 		a.bestAgent.Loss++
-		winningAgent = a.currentAgent
 	case winner == a.bestAgent.Player:
 		a.bestAgent.Wins++
 		a.currentAgent.Loss++
-		winningAgent = a.bestAgent
 	}
-	if !record {
-		log.Printf("Winner %v | %p", winner, winningAgent)
-	}
+
 	a.currentAgent.MCTS = mcts.New(a.game, a.conf, a.currentAgent)
 	a.bestAgent.MCTS = mcts.New(a.game, a.conf, a.bestAgent)
-	runtime.GC()
-	return examples
+
+	return
 }
 
 // Epoch returns the current Epoch
@@ -174,6 +193,7 @@ func (a *Arena) Log(w io.Writer) {
 
 func (a *Arena) newAgent(conf dual.Config, killedA bool) (err error) {
 	if killedA || a.oldCount >= a.oldThresh {
+		log.Printf("NewB NN %p", a.currentAgent.NN)
 		a.currentAgent.NN = dual.New(conf)
 		err = a.currentAgent.NN.Init()
 		if err != nil {
@@ -182,7 +202,6 @@ func (a *Arena) newAgent(conf dual.Config, killedA bool) (err error) {
 		a.oldCount = 0
 	}
 	a.oldCount++
-	log.Printf("NewB NN %p", a.currentAgent.NN)
 	return err
 }
 

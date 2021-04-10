@@ -9,6 +9,8 @@ const (
 	Begin      = -3
 	Resign     = -2
 	ResignMove = Move("resign")
+	RowNum     = 8
+	ColNum     = 8
 )
 
 // State is any game that implements these and are able to report back
@@ -43,7 +45,7 @@ type State interface {
 // InputEncoder encodes game state to neural input format.
 func InputEncoder(g State) []float32 {
 	m := g.Board().SquareMap()
-	board := make([]float32, len(m))
+	board := make([]float32, RowNum * ColNum)
 	for k, v := range m {
 		if v == chess.NoPiece {
 			board[int8(k)] = 0.001

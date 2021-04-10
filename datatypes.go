@@ -20,14 +20,10 @@ type Config struct {
 
 	// extensions
 	Encoder   GameEncoder
-	Augmenter Augmenter
 }
 
 // GameEncoder encodes a game state as a slice of floats
 type GameEncoder func(a game.State) []float32
-
-// Augmenter takes an example, and creates more examples from it.
-type Augmenter func(a Example) []Example
 
 // Example is a representation of an example.
 type Example struct {
@@ -37,7 +33,6 @@ type Example struct {
 }
 
 // Dualer is an interface for anything that allows getting out a *Dual.
-//
 // Its sole purpose is to form a monoid-ish data structure for Agent.NN
 type Dualer interface {
 	Dual() *dual.Dual

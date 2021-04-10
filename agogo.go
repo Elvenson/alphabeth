@@ -26,7 +26,6 @@ type AZ struct {
 	nnConf          dual.Config
 	mctsConf        mcts.Config
 	enc             GameEncoder
-	aug             Augmenter
 	updateThreshold float32
 	maxExamples     int
 }
@@ -56,7 +55,6 @@ func New(g game.State, conf Config) *AZ {
 		nnConf:          conf.NNConf,
 		mctsConf:        conf.MCTSConf,
 		enc:             conf.Encoder,
-		aug:             conf.Augmenter,
 		updateThreshold: float32(conf.UpdateThreshold),
 		maxExamples:     conf.MaxExamples,
 	}
@@ -64,23 +62,7 @@ func New(g game.State, conf Config) *AZ {
 	return retVal
 }
 
-func (a *AZ) setupSelfPlay() error {
-	if err := a.currentAgent.SwitchToInference(); err != nil {
-		return err
-	}
-	log.Printf("Set up selfplay: Switch To inference for A. A.NN %p (%T)", a.currentAgent.NN, a.currentAgent.NN)
-	return nil
-}
-
-// SelfPlay plays an episode.
-func (a *AZ) SelfPlay() []Example {
-	examples := a.Play(true)
-
-	a.game.Reset()
-	return examples
-}
-
-// Learn learns for iters. It self-plays for episodes, and then trains a new NN from the self play example.
+// Learn learns for iterations. It self-plays for episodes, and then trains a new NN from the self play example.
 func (a *AZ) Learn(iters, episodes, nniters, arenaGames int) error {
 	var err error
 	for a.epoch = 0; a.epoch < iters; a.epoch++ {
@@ -89,18 +71,17 @@ func (a *AZ) Learn(iters, episodes, nniters, arenaGames int) error {
 			a.epoch, a.bestAgent, a.currentAgent)
 
 		a.buf.Reset()
-		a.logger.Printf("Self Play for epoch %d. Current best agent %p, current agent %p",
-			a.epoch, a.bestAgent, a.currentAgent)
 		a.logger.SetPrefix("\t")
-		if err := a.setupSelfPlay(); err != nil {
-			return err
-		}
 
 		for e := 0; e < episodes; e++ {
-			log.Printf("\tEpisode %v", e)
-			a.logger.Printf("Episode %v\n", e)
-			// TODO: Fix self play logic only let 1 agent plays with themselves.
-			ex = append(ex, a.SelfPlay()...)
+			log.Printf("Episode %v\n", e)
+
+			// generates training examples
+			if exs, err := a.SelfPlay(); err != nil {
+				return err
+			} else {
+				ex = append(ex, exs...)
+			}
 		}
 		a.logger.SetPrefix("")
 		a.buf.Reset()
@@ -129,8 +110,7 @@ func (a *AZ) Learn(iters, episodes, nniters, arenaGames int) error {
 		a.logger.SetPrefix("\t")
 		for a.gameNumber = 0; a.gameNumber < arenaGames; a.gameNumber++ {
 			a.logger.Printf("Playing game number %d", a.gameNumber)
-			a.Play(false)
-			a.game.Reset()
+			a.Play()
 		}
 		a.logger.SetPrefix("")
 
