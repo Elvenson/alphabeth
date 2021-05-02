@@ -4,7 +4,6 @@ import (
 	"math/rand"
 	"runtime"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/alphabeth/game"
@@ -17,21 +16,19 @@ type Config struct {
 	PUCT    float32
 	Timeout time.Duration
 
-	// M, N represents the height and width.
-	M, N              int
 	RandomCount       int   // if the move number is less than this, we should randomize
 	Budget            int32 // iteration budget
 	RandomMinVisits   uint32
 	RandomTemperature float32
+	MaxDepth          int
+	NumSimulation     int // Be careful with this config it can cause goroutine starvation.
 }
 
-func DefaultConfig(boardSize int) Config {
+func DefaultConfig() Config {
 	return Config{
-		PUCT:     1.0,
-		Timeout:  100 * time.Millisecond,
-		M:        boardSize,
-		N:        boardSize,
-		Budget:   10000,
+		PUCT:    1.0,
+		Timeout: 100 * time.Millisecond,
+		Budget:  10000,
 	}
 }
 
@@ -55,16 +52,14 @@ type MCTS struct {
 	// memory related fields
 	nodes []Node
 	// children  map[naughty][]naughty
-	children  [][]naughty
-	childLock []sync.Mutex
+	children [][]naughty
 
 	freelist  []naughty
 	freeables []naughty // list of nodes that can be freed
 
 	// global searchState
 	searchState
-	playouts, nc int32 // atomic pls
-	running      atomic.Value
+	nc int32 // atomic pls
 
 	// global policy values - useful for building policy vectors
 	cachedPolicies map[sa]float32
@@ -81,7 +76,6 @@ func New(game game.State, conf Config, nn Inferencer) *MCTS {
 		nodes: make([]Node, 0, 12288),
 		// children: make(map[naughty][]naughty),
 		children:  make([][]naughty, 0, 12288),
-		childLock: make([]sync.Mutex, 0, 12288),
 
 		searchState: searchState{
 			root:    nilNode,
@@ -93,21 +87,22 @@ func New(game game.State, conf Config, nn Inferencer) *MCTS {
 	}
 	go retVal.start()
 	retVal.searchState.tree = ptrFromTree(retVal)
-	retVal.searchState.maxDepth = retVal.M * retVal.N
+	retVal.searchState.maxDepth = conf.MaxDepth
 	return retVal
 }
 
 // New creates a new node
-func (t *MCTS) New(move int32, score, value float32) (retVal naughty) {
+func (t *MCTS) New(move int32, score float32) (retVal naughty) {
 	n := t.alloc()
 	N := t.nodeFromNaughty(n)
-	atomic.StoreInt32(&N.move, move)
-	atomic.StoreUint32(&N.visits, 1)
-	atomic.StoreUint32(&N.status, uint32(Active))
-	atomic.StoreUint32(&N.psa, math32.Float32bits(score))
-	atomic.StoreUint32(&N.value, math32.Float32bits(value))
+	N.lock.Lock()
+	defer N.lock.Unlock()
+	N.move = move
+	N.visits = 1
+	N.status = uint32(Active)
+	N.qsa = 0
+	N.psa = score
 
-	// log.Printf("New node %p - %v", N, N)
 	return n
 }
 
@@ -120,43 +115,47 @@ func (t *MCTS) SetGame(g game.State) {
 
 func (t *MCTS) Nodes() int { return len(t.nodes) }
 
-func (t *MCTS) Policies(g game.State) []float32 {
+func (t *MCTS) Policies(g game.State) ([]float32, error) {
 	hash := g.Hash()
 	var sum float32
 	retVal := make([]float32, g.ActionSpace())
 	for i := 0; i < g.ActionSpace(); i++ {
-		prob := t.cachedPolicies[sa{s: hash, a: t.current.NNToMove(int32(i))}]
-		retVal[i] = prob
-		sum += prob
+		m, err := t.current.NNToMove(int32(i))
+		if err != nil {
+			return nil, err
+		}
+		if t.current.Check(m) {
+			prob := t.cachedPolicies[sa{s: hash, a: m}]
+			retVal[i] = prob
+			sum += prob
+		}
 	}
 	for i := 0; i < len(retVal); i++ {
 		retVal[i] /= sum
 	}
-	return retVal
+	return retVal, nil
 }
 
 // alloc tries to get a node from the free list. If none is found a new node is allocated into the master arena
 func (t *MCTS) alloc() naughty {
 	t.Lock()
+	defer t.Unlock()
 	l := len(t.freelist)
 	if l == 0 {
 		N := Node{
-			tree: ptrFromTree(t),
-			id:   naughty(len(t.nodes)),
-
-			minPSARatioChildren: defaultMinPsaRatio,
+			lock:        sync.Mutex{},
+			tree:        ptrFromTree(t),
+			id:          naughty(len(t.nodes)),
+			hasChildren: false,
 		}
 		t.nodes = append(t.nodes, N)
-		t.children = append(t.children, make([]naughty, 0, t.M*t.N+1))
-		t.childLock = append(t.childLock, sync.Mutex{})
+		t.children = append(t.children, make([]naughty, 0, t.current.ActionSpace()))
 		n := naughty(len(t.nodes) - 1)
-		t.Unlock()
 		return n
 	}
 
 	i := t.freelist[l-1]
 	t.freelist = t.freelist[:l-1]
-	t.Unlock()
 	return i
 }
 
@@ -235,9 +234,8 @@ func (t *MCTS) randomizeChildren(of naughty) {
 		return
 	}
 
-	for i := 0; i < len(children)-index; i++ {
-		children[i], children[i+index] = children[i+index], children[i]
-	}
+	children[0], children[index] = children[index], children[0]
+
 }
 
 func (t *MCTS) Reset() {
@@ -251,10 +249,8 @@ func (t *MCTS) Reset() {
 		t.nodes[i].visits = 0
 		t.nodes[i].status = 0
 		t.nodes[i].psa = 0
-		t.nodes[i].minPSARatioChildren = 0
+		t.nodes[i].hasChildren = false
 		t.nodes[i].qsa = 0
-		t.nodes[i].value = 0
-
 		t.freelist = append(t.freelist, t.nodes[i].id)
 	}
 
@@ -262,7 +258,6 @@ func (t *MCTS) Reset() {
 		t.children[i] = t.children[i][:0]
 	}
 
-	t.playouts = 0
 	t.nodes = t.nodes[:0]
 	t.cachedPolicies = make(map[sa]float32)
 	runtime.GC()

@@ -24,31 +24,34 @@ func main() {
 	conf := agogo.Config{
 		Name:            "Alphabeth",
 		NNConf:          dual.DefaultConf(game.RowNum, game.ColNum, g.ActionSpace()),
-		MCTSConf:        mcts.DefaultConfig(8),
-		UpdateThreshold: 0.52,
+		MCTSConf:        mcts.DefaultConfig(),
+		UpdateThreshold: 0.55,
 	}
 
-	conf.NNConf.BatchSize = 100
+	conf.NNConf.BatchSize = 20
 	conf.NNConf.Features = 2 // write a better encoding of the board, and increase features (and that allows you to increase K as well)
 	conf.NNConf.K = 3
 	conf.NNConf.SharedLayers = 3
 	conf.MCTSConf = mcts.Config{
 		PUCT:        1.0,
-		M:           3,
-		N:           3,
-		Timeout:     100 * time.Millisecond,
+		Timeout:     10000 * time.Millisecond,
 		Budget:      1000,
-		RandomCount: 0,
+		RandomCount: 10,
+		MaxDepth:    10000,
+		NumSimulation: 800,
+		RandomMinVisits: 0,
+		RandomTemperature: 10,
 	}
 
 	conf.Encoder = game.InputEncoder
 
 	a := agogo.New(g, conf)
-	if err := a.Learn(5, 30, 200, 30); err != nil {
+	if err := a.LearnAZ(1, 5, 5); err != nil {
 		log.Fatalf("error when learning chess: %s", err)
 	}
 
-	if err := a.Save("example.model"); err != nil {
+	log.Printf("Save model")
+	if err := a.SaveAZ("example.model"); err != nil {
 		log.Fatalf("error when saving model: %s", err)
 	}
 }

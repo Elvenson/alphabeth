@@ -1,10 +1,6 @@
 package agogo
 
 import (
-	"bytes"
-	"fmt"
-	"io"
-	"log"
 	"math/rand"
 	"runtime"
 	"time"
@@ -21,17 +17,14 @@ import (
 type Arena struct {
 	r                       *rand.Rand
 	game                    game.State
-	bestAgent, currentAgent *Agent
+	BestAgent, CurrentAgent *Agent
 
 	// state
 	currentPlayer *Agent
 	conf          mcts.Config
-	buf           bytes.Buffer
-	logger        *log.Logger
 
 	// only relevant to training
 	name       string
-	epoch      int // training epoch
 	gameNumber int // which game is this in
 
 	// when to screw it all and just reinit a new NN
@@ -41,67 +34,59 @@ type Arena struct {
 
 // MakeArena makes an arena given a game.
 func MakeArena(g game.State, a, b Dualer, conf mcts.Config, enc GameEncoder, name string) Arena {
-	bestAgent := &Agent{
+	BestAgent := &Agent{
 		NN:   a.Dual(),
 		Enc:  enc,
-		name: "A",
+		name: "best agent",
 	}
-	bestAgent.MCTS = mcts.New(g, conf, bestAgent)
-	currentAgent := &Agent{
+	BestAgent.MCTS = mcts.New(g, conf, BestAgent)
+	CurrentAgent := &Agent{
 		NN:   b.Dual(),
 		Enc:  enc,
-		name: "B",
+		name: "current agent",
 	}
-	currentAgent.MCTS = mcts.New(g, conf, currentAgent)
-
-	if name == "" {
-		name = "UNKNOWN GAME"
-	}
+	CurrentAgent.MCTS = mcts.New(g, conf, CurrentAgent)
 
 	return Arena{
 		r:            rand.New(rand.NewSource(time.Now().UnixNano())),
 		game:         g,
-		bestAgent:    bestAgent,
-		currentAgent: currentAgent,
+		BestAgent:    BestAgent,
+		CurrentAgent: CurrentAgent,
 		conf:         conf,
 		name:         name,
-
-		oldThresh: 10,
+		oldThresh:    10,
 	}
-}
-
-func setupSelfPlay(agent *Agent) error {
-	if err := agent.SwitchToInference(); err != nil {
-		return err
-	}
-	return nil
 }
 
 // SelfPlays lets the agent to generate training data by playing with itself.
 func (a *Arena) SelfPlay() (examples []Example, err error) {
-	a.logger.Printf("Self playing\n")
-	a.logger.SetPrefix("\t\t")
-	if err := setupSelfPlay(a.currentAgent); err != nil {
+	if err := a.CurrentAgent.SwitchToInference(a.game); err != nil {
 		return nil, err
 	}
 
 	var winner chess.Color
 	var ended bool
 	for ended, winner = a.game.Ended(); !ended; ended, winner = a.game.Ended() {
-		best := a.currentAgent.Search(a.game)
+		best, err := a.CurrentAgent.Search(a.game)
+		if err != nil {
+			return nil, err
+		}
 		if best == game.ResignMove {
 			break
 		}
 
-		log.Printf("Current Player: %v. Best Move %v\n", a.game.Turn(), best)
-		boards := a.currentAgent.Enc(a.game)
-		policies := a.currentAgent.MCTS.Policies(a.game)
+		boards := a.CurrentAgent.Enc(a.game)
+		policies, err := a.CurrentAgent.MCTS.Policies(a.game)
+		if err != nil {
+			return nil, err
+		}
 		ex := Example{
 			Board:  boards,
 			Policy: policies,
 			// THIS IS A HACK.
-			// The value is 1 or -1 depending on player colour, but for now we store the player colour for this turn
-			Value: float32(a.currentAgent.Player),
+			// The value is 1 or -1 depending on player colour or draw 0,
+			// but for now we store the player colour for this turn.
+			Value: float32(a.game.Turn()),
 		}
 		if validPolicies(policies) {
 			examples = append(examples, ex)
@@ -120,26 +105,32 @@ func (a *Arena) SelfPlay() (examples []Example, err error) {
 		}
 	}
 
-	a.currentAgent.MCTS.Reset()
+	a.CurrentAgent.MCTS.Reset()
 	a.game.Reset()
 	runtime.GC()
 
-	a.currentAgent.MCTS = mcts.New(a.game, a.conf, a.currentAgent)
+	a.CurrentAgent.MCTS = mcts.New(a.game, a.conf, a.CurrentAgent)
+	//if err := a.CurrentAgent.Close(); err != nil {
+	//	return nil, err
+	//}
 
 	return examples, nil
 }
 
-// Play plays a game, and records who is the winner. If it is a draw, the returned colour is None.
-func (a *Arena) Play() {
+// Play plays a game, and records who is the winner
+func (a *Arena) Play() error {
 	// set the current agent as white piece
-	a.currentPlayer = a.currentAgent
-	a.currentAgent.Player = chess.White
-	a.bestAgent.Player = chess.Black
+	a.currentPlayer = a.CurrentAgent
+	a.CurrentAgent.Player = chess.White
+	a.BestAgent.Player = chess.Black
 
 	var winner chess.Color
 	var ended bool
 	for ended, winner = a.game.Ended(); !ended; ended, winner = a.game.Ended() {
-		best := a.currentPlayer.Search(a.game)
+		best, err := a.currentPlayer.Search(a.game)
+		if err != nil {
+			return err
+		}
 		if best == game.ResignMove {
 			break
 		}
@@ -147,31 +138,28 @@ func (a *Arena) Play() {
 		a.switchPlayer()
 	}
 
-	a.currentAgent.MCTS.Reset()
-	a.bestAgent.MCTS.Reset()
+	a.CurrentAgent.MCTS.Reset()
+	a.BestAgent.MCTS.Reset()
 	a.game.Reset()
 	runtime.GC()
 
 	switch {
 	case winner == chess.NoColor:
-		a.currentAgent.Draw++
-		a.bestAgent.Draw++
-	case winner == a.currentAgent.Player:
-		a.currentAgent.Wins++
-		a.bestAgent.Loss++
-	case winner == a.bestAgent.Player:
-		a.bestAgent.Wins++
-		a.currentAgent.Loss++
+		a.CurrentAgent.Draw++
+		a.BestAgent.Draw++
+	case winner == a.CurrentAgent.Player:
+		a.CurrentAgent.Wins++
+		a.BestAgent.Loss++
+	case winner == a.BestAgent.Player:
+		a.BestAgent.Wins++
+		a.CurrentAgent.Loss++
 	}
 
-	a.currentAgent.MCTS = mcts.New(a.game, a.conf, a.currentAgent)
-	a.bestAgent.MCTS = mcts.New(a.game, a.conf, a.bestAgent)
+	a.CurrentAgent.MCTS = mcts.New(a.game, a.conf, a.CurrentAgent)
+	a.BestAgent.MCTS = mcts.New(a.game, a.conf, a.BestAgent)
 
-	return
+	return nil
 }
-
-// Epoch returns the current Epoch
-func (a *Arena) Epoch() int { return a.epoch }
 
 // GameNumber returns the
 func (a *Arena) GameNumber() int { return a.gameNumber }
@@ -182,35 +170,26 @@ func (a *Arena) Name() string { return a.name }
 // State of the game
 func (a *Arena) State() game.State { return a.game }
 
-// Log the MCTS of both players into w
-func (a *Arena) Log(w io.Writer) {
-	fmt.Fprintf(w, a.buf.String())
-	fmt.Fprintf(w, "\nA:\n\n")
-	fmt.Fprintln(w, a.currentAgent.MCTS.Log())
-	fmt.Fprintf(w, "\nB:\n\n")
-	fmt.Fprintln(w, a.bestAgent.MCTS.Log())
-}
-
 func (a *Arena) newAgent(conf dual.Config, killedA bool) (err error) {
 	if killedA || a.oldCount >= a.oldThresh {
-		log.Printf("NewB NN %p", a.currentAgent.NN)
-		a.currentAgent.NN = dual.New(conf)
-		err = a.currentAgent.NN.Init()
+		a.CurrentAgent.NN = dual.New(conf)
+		err = a.CurrentAgent.NN.Init()
 		if err != nil {
 			return err
 		}
 		a.oldCount = 0
+	} else {
+		a.oldCount++
 	}
-	a.oldCount++
 	return err
 }
 
 func (a *Arena) switchPlayer() {
 	switch a.currentPlayer {
-	case a.currentAgent:
-		a.currentPlayer = a.bestAgent
-	case a.bestAgent:
-		a.currentPlayer = a.currentAgent
+	case a.CurrentAgent:
+		a.currentPlayer = a.BestAgent
+	case a.BestAgent:
+		a.currentPlayer = a.CurrentAgent
 	}
 }
 

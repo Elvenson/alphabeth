@@ -22,16 +22,17 @@ type State interface {
 	Turn() chess.Color       // Turn returns the color to move next.
 	MoveNumber() int         // returns count of moves so far that led to this point.
 	LastMove() int32         // returns the last move that was made in neural network index.
-	NNToMove(idx int32) Move // returns move from neural network encoding output space.
+	NNToMove(idx int32) (Move, error) // returns move from neural network encoding output space.
 
 	// Meta-game stuff
 	Ended() (ended bool, winner chess.Color) // has the game ended? if yes, then who's the winner?
 	Resign(color chess.Color)                // current player resign the game.
 
 	// interactions
-	Check(m Move) bool  // check if the placement is legal.
-	Apply(m Move) State // should return a GameState. The required side effect is the NextToMove has to change.
-	Reset()             // reset state.
+	Check(m Move) bool      // check if the placement is legal.
+	Apply(m Move) State     // should return a GameState. The required side effect is the NextToMove has to change.
+	Reset()                 // reset state.
+	PossibleMoves() []int32 // get all possible index moves.
 
 	// For MCTS
 	UndoLastMove()
@@ -40,12 +41,13 @@ type State interface {
 	// generics
 	Eq(other State) bool
 	Clone() State
+	ShowBoard()
 }
 
 // InputEncoder encodes game state to neural input format.
 func InputEncoder(g State) []float32 {
 	m := g.Board().SquareMap()
-	board := make([]float32, RowNum * ColNum)
+	board := make([]float32, RowNum*ColNum)
 	for k, v := range m {
 		if v == chess.NoPiece {
 			board[int8(k)] = 0.001
@@ -54,7 +56,7 @@ func InputEncoder(g State) []float32 {
 		}
 	}
 
-	playerLayer := make([]float32, len(m))
+	playerLayer := make([]float32, RowNum*ColNum)
 	next := g.Turn()
 	for i := range playerLayer {
 		playerLayer[i] = float32(next)

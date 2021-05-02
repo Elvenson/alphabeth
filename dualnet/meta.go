@@ -121,8 +121,8 @@ type Inferencer struct {
 	buf   *bytes.Buffer
 }
 
-// Infer takes a trained *Dual, and creates a inference data structure such that it'd be easy to infer
-func Infer(d *Dual, toLog bool) (*Inferencer, error) {
+// Infer takes a trained *Dual, and creates a interence data structure such that it'd be easy to infer
+func Infer(d *Dual, actionSpace int, toLog bool) (*Inferencer, error) {
 	conf := d.Config
 	conf.FwdOnly = true
 	retVal := &Inferencer{
@@ -174,7 +174,6 @@ func (m *Inferencer) Infer(board []float32) (policy []float32, value float32, er
 	copy(data, board)
 
 	m.m.Reset()
-	// log.Printf("Let planes %p be input %v", m.d.planes, board)
 	m.buf.Reset()
 	G.Let(m.d.planes, m.input)
 	if err = m.m.RunAll(); err != nil {
@@ -182,7 +181,6 @@ func (m *Inferencer) Infer(board []float32) (policy []float32, value float32, er
 	}
 	policy = m.d.policyValue.Data().([]float32)
 	value = m.d.value.Data().([]float32)[0]
-	// log.Printf("\t%v", policy)
 	return policy[:m.d.ActionSpace], value, nil
 }
 

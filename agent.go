@@ -33,13 +33,13 @@ type Agent struct {
 }
 
 // SwitchToInference uses the inference mode neural network.
-func (a *Agent) SwitchToInference() (err error) {
+func (a *Agent) SwitchToInference(game game.State) (err error) {
 	a.Lock()
 	a.inferer = make(chan Inferer, numCPU)
 
 	for i := 0; i < numCPU; i++ {
 		var inf Inferer
-		if inf, err = dual.Infer(a.NN, false); err != nil {
+		if inf, err = dual.Infer(a.NN, game.ActionSpace(),false); err != nil {
 			return err
 		}
 		a.inferers = append(a.inferers, inf)
@@ -68,7 +68,7 @@ func (a *Agent) Infer(g game.State) (policy []float32, value float32) {
 }
 
 // Search searches the game state and returns a suggested coordinate.
-func (a *Agent) Search(g game.State) game.Move {
+func (a *Agent) Search(g game.State) (game.Move, error) {
 	a.MCTS.SetGame(g)
 	return a.MCTS.Search()
 }

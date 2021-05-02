@@ -104,7 +104,7 @@ func TestInferenceSanity(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	t.Logf("POLICY %v | %v", policy, value)
+	fmt.Printf("POLICY %v | %v\n", policy, value)
 	runtime.GC()
 }
 

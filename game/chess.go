@@ -47,10 +47,11 @@ func ChessGame(movesFile string) *Chess {
 	// new game with UCI notation
 	g := chess.NewGame(chess.UseNotation(chess.UCINotation{}))
 	return &Chess{
-		Mutex:       sync.Mutex{},
-		history:     []chess.Game{*g},
-		actionSpace: actionSpace,
-		histPtr:     0,
+		Mutex:              sync.Mutex{},
+		history:            []chess.Game{*g},
+		actionSpace:        actionSpace,
+		reverseActionSpace: reverseActionSpace,
+		histPtr:            0,
 	}
 }
 
@@ -80,14 +81,20 @@ func (g *Chess) LastMove() int32 {
 	}
 	lastG := g.history[g.histPtr]
 	moveHist := lastG.Moves()
-	return g.reverseActionSpace[Move(moveHist[len(moveHist)-1].String())]
+	m := Move(moveHist[len(moveHist)-1].String())
+	if idx, ok := g.reverseActionSpace[m]; !ok {
+		log.Panicf("move out of range: %s", m)
+		return -1
+	} else {
+		return idx
+	}
 }
 
-func (g *Chess) NNToMove(idx int32) Move {
+func (g *Chess) NNToMove(idx int32) (Move, error) {
 	if m, ok := g.actionSpace[idx]; !ok {
-		panic(fmt.Sprintf("index out of range: %d", idx))
+		return "", fmt.Errorf("invalid index: %d", idx)
 	} else {
-		return m
+		return m, nil
 	}
 }
 
@@ -144,6 +151,15 @@ func (g *Chess) Apply(m Move) State {
 	return g
 }
 
+func (g *Chess) PossibleMoves() []int32 {
+	moves := g.history[g.histPtr].ValidMoves()
+	mIdx := make([]int32, len(moves))
+	for i, m := range moves {
+		mIdx[i] = g.reverseActionSpace[Move(m.String())]
+	}
+	return mIdx
+}
+
 func (g *Chess) Reset() {
 	g.history = g.history[:1] // reset to first state
 	g.histPtr = 0
@@ -173,15 +189,24 @@ func (g *Chess) Eq(other State) bool {
 func (g *Chess) Clone() State {
 	g.Lock()
 	n := &Chess{
-		Mutex:       sync.Mutex{},
-		history:     make([]chess.Game, len(g.history)),
-		actionSpace: make(map[int32]Move, 0),
-		histPtr:     g.histPtr,
+		Mutex:              sync.Mutex{},
+		history:            make([]chess.Game, len(g.history)),
+		actionSpace:        make(map[int32]Move, 0),
+		reverseActionSpace: make(map[Move]int32, 0),
+		histPtr:            g.histPtr,
 	}
 	copy(n.history, g.history)
 	for k, v := range g.actionSpace {
 		n.actionSpace[k] = v
 	}
+	for k, v := range g.reverseActionSpace {
+		n.reverseActionSpace[k] = v
+	}
+
 	g.Unlock()
 	return n
+}
+
+func (g *Chess) ShowBoard() {
+	fmt.Println(g.history[g.histPtr].Position().Board().Draw())
 }

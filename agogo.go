@@ -58,20 +58,17 @@ func New(g game.State, conf Config) *AZ {
 		updateThreshold: float32(conf.UpdateThreshold),
 		maxExamples:     conf.MaxExamples,
 	}
-	retVal.logger = log.New(&retVal.buf, "", log.Ltime)
 	return retVal
 }
 
 // Learn learns for iterations. It self-plays for episodes, and then trains a new NN from the self play example.
+// Finally we let 2 agents compete then get the best agent based on threshold.
 func (a *AZ) Learn(iters, episodes, nniters, arenaGames int) error {
 	var err error
-	for a.epoch = 0; a.epoch < iters; a.epoch++ {
+	for epoch := 0; epoch < iters; epoch++ {
 		var ex []Example
 		log.Printf("Self Play for epoch %d. Current best agent %p, current agent %p",
-			a.epoch, a.bestAgent, a.currentAgent)
-
-		a.buf.Reset()
-		a.logger.SetPrefix("\t")
+			epoch, a.BestAgent, a.CurrentAgent)
 
 		for e := 0; e < episodes; e++ {
 			log.Printf("Episode %v\n", e)
@@ -83,8 +80,6 @@ func (a *AZ) Learn(iters, episodes, nniters, arenaGames int) error {
 				ex = append(ex, exs...)
 			}
 		}
-		a.logger.SetPrefix("")
-		a.buf.Reset()
 
 		if a.maxExamples > 0 && len(ex) > a.maxExamples {
 			shuffleExamples(ex)
@@ -92,45 +87,51 @@ func (a *AZ) Learn(iters, episodes, nniters, arenaGames int) error {
 		}
 		Xs, Policies, Values, batches := a.prepareExamples(ex)
 
-		if err = dual.Train(a.currentAgent.NN, Xs, Policies, Values, batches, nniters); err != nil {
+		if batches == 0 {
+			return errors.New("batches is nil, probably too few examples regarding the batchsize")
+		}
+
+		log.Print("begin training")
+		if err = dual.Train(a.CurrentAgent.NN, Xs, Policies, Values, batches, nniters); err != nil {
 			return errors.WithMessage(err, fmt.Sprintf("Train fail"))
 		}
 
-		if err = a.currentAgent.SwitchToInference(); err != nil {
+		if err = a.CurrentAgent.SwitchToInference(a.game); err != nil {
 			return err
 		}
-		if err = a.bestAgent.SwitchToInference(); err != nil {
+		if err = a.BestAgent.SwitchToInference(a.game); err != nil {
 			return err
 		}
 
-		a.currentAgent.resetStats()
-		a.bestAgent.resetStats()
+		a.CurrentAgent.resetStats()
+		a.BestAgent.resetStats()
 
-		a.logger.Printf("Playing Arena")
-		a.logger.SetPrefix("\t")
+		log.Print("Playing Arena")
 		for a.gameNumber = 0; a.gameNumber < arenaGames; a.gameNumber++ {
-			a.logger.Printf("Playing game number %d", a.gameNumber)
-			a.Play()
+			log.Printf("Playing game number %d", a.gameNumber)
+			err := a.Play()
+			if err != nil {
+				return err
+			}
 		}
-		a.logger.SetPrefix("")
 
-		if err = a.bestAgent.Close(); err != nil {
+		if err = a.BestAgent.Close(); err != nil {
 			return err
 		}
-		if err = a.currentAgent.Close(); err != nil {
+		if err = a.CurrentAgent.Close(); err != nil {
 			return err
 		}
 
 		var killedA bool
 		log.Printf("Current best agent wins %v, loss %v, draw %v\ncurrent agent wins %v, loss %v, draw %v",
-			a.bestAgent.Wins, a.bestAgent.Loss, a.bestAgent.Draw,
-			a.currentAgent.Wins, a.currentAgent.Loss, a.currentAgent.Draw)
+			a.BestAgent.Wins, a.BestAgent.Loss, a.BestAgent.Draw,
+			a.CurrentAgent.Wins, a.CurrentAgent.Loss, a.CurrentAgent.Draw)
 
-		// if a.B.Wins/(a.B.Wins+a.B.Loss+a.B.Draw) > a.updateThreshold {
-		if a.currentAgent.Wins/(a.currentAgent.Wins+a.bestAgent.Wins) > a.updateThreshold {
-			// B wins. Kill A, clean up its resources.
-			log.Printf("Kill current best agent %p. New best agent's NN is %p", a.bestAgent.NN, a.currentAgent.NN)
-			a.bestAgent.NN = a.currentAgent.NN
+		// plus 1 in case all draw it will be divided by 0
+		if a.CurrentAgent.Wins/(a.CurrentAgent.Wins+a.BestAgent.Wins + 1) > a.updateThreshold {
+			// B wins. Kill A, clean up its resources
+			log.Printf("Kill current best agent %p. New best agent's NN is %p", a.BestAgent.NN, a.CurrentAgent.NN)
+			a.BestAgent.NN = a.CurrentAgent.NN
 			// clear examples
 			ex = ex[:0]
 			killedA = true
@@ -144,7 +145,43 @@ func (a *AZ) Learn(iters, episodes, nniters, arenaGames int) error {
 	return nil
 }
 
-// Save learning into filename.
+// Learn learns for iterations. It self-plays for episodes, and then trains a new NN from the self play example.
+// The difference between this and `Learn` function is that in Alpha Zero we just simply store the latest model
+// no need compete with the current best agent.
+func (a *AZ) LearnAZ(iters, episodes, nniters int) error {
+	var err error
+	for epoch := 0; epoch < iters; epoch++ {
+		var ex []Example
+		for e := 0; e < episodes; e++ {
+			log.Printf("Episode %v\n", e)
+
+			// generates training examples
+			if exs, err := a.SelfPlay(); err != nil {
+				return err
+			} else {
+				ex = append(ex, exs...)
+			}
+		}
+
+		if a.maxExamples > 0 && len(ex) > a.maxExamples {
+			shuffleExamples(ex)
+			ex = ex[:a.maxExamples]
+		}
+		Xs, Policies, Values, batches := a.prepareExamples(ex)
+
+		if batches == 0 {
+			return errors.New("batches is nil, probably too few examples regarding the batchsize")
+		}
+
+		log.Print("begin training")
+		if err = dual.Train(a.CurrentAgent.NN, Xs, Policies, Values, batches, nniters); err != nil {
+			return errors.WithMessage(err, fmt.Sprintf("Train fail"))
+		}
+	}
+	return nil
+}
+
+// Save AlphaGo into filename.
 func (a *AZ) Save(filename string) error {
 	f, err := os.OpenFile(filename, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0544)
 	if err != nil {
@@ -153,10 +190,22 @@ func (a *AZ) Save(filename string) error {
 	defer f.Close()
 
 	enc := gob.NewEncoder(f)
-	return enc.Encode(a.bestAgent.NN)
+	return enc.Encode(a.BestAgent.NN)
 }
 
-// Load the Alpha Zero structure from a filename
+// Save AlphaZero into filename.
+func (a *AZ) SaveAZ(filename string) error {
+	f, err := os.OpenFile(filename, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0544)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	enc := gob.NewEncoder(f)
+	return enc.Encode(a.CurrentAgent.NN)
+}
+
+// Load loads the Alpha model structure from a filename.
 func (a *AZ) Load(filename string) error {
 	f, err := os.Open(filename)
 	if err != nil {
@@ -164,17 +213,17 @@ func (a *AZ) Load(filename string) error {
 	}
 	defer f.Close()
 
-	a.bestAgent.NN = dual.New(a.nnConf)
-	a.currentAgent.NN = dual.New(a.nnConf)
+	a.BestAgent.NN = dual.New(a.nnConf)
+	a.CurrentAgent.NN = dual.New(a.nnConf)
 
 	dec := gob.NewDecoder(f)
-	if err = dec.Decode(a.bestAgent.NN); err != nil {
+	if err = dec.Decode(a.BestAgent.NN); err != nil {
 		return errors.WithStack(err)
 	}
 
 	f.Seek(0, 0)
 	dec = gob.NewDecoder(f)
-	if err = dec.Decode(a.currentAgent.NN); err != nil {
+	if err = dec.Decode(a.CurrentAgent.NN); err != nil {
 		return errors.WithStack(err)
 	}
 	return nil
