@@ -66,8 +66,8 @@ func (m *maebe) res(input *G.Node, filterCount int, name string) (*G.Node, batch
 
 func (m *maebe) share(input *G.Node, filterCount, layer int) (*G.Node, batchNormOp, batchNormOp) {
 	layer1, l1Op := m.res(input, filterCount, fmt.Sprintf("Layer1 of Shared Layer %d", layer))
-	layer2, l2Op := m.res(input, filterCount, fmt.Sprintf("Layer2 of Shared Layer %d", layer))
-	added := m.do(func() (*G.Node, error) { return G.Add(layer1, layer2) })
+	layer2, l2Op := m.res(layer1, filterCount, fmt.Sprintf("Layer2 of Shared Layer %d", layer))
+	added := m.do(func() (*G.Node, error) { return G.Add(input, layer2) })
 	retVal := m.rectify(added)
 	return retVal, l1Op, l2Op
 }

@@ -122,7 +122,7 @@ type Inferencer struct {
 }
 
 // Infer takes a trained *Dual, and creates a interence data structure such that it'd be easy to infer
-func Infer(d *Dual, actionSpace int, toLog bool) (*Inferencer, error) {
+func Infer(d *Dual, toLog bool) (*Inferencer, error) {
 	conf := d.Config
 	conf.FwdOnly = true
 	retVal := &Inferencer{

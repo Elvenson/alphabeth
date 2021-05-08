@@ -14,7 +14,6 @@ import (
 type Config struct {
 	// PUCT is the proportion of polynomial upper confidence trees to keep. Between 1 and 0
 	PUCT    float32
-	Timeout time.Duration
 
 	RandomCount       int   // if the move number is less than this, we should randomize
 	Budget            int32 // iteration budget
@@ -27,7 +26,6 @@ type Config struct {
 func DefaultConfig() Config {
 	return Config{
 		PUCT:    1.0,
-		Timeout: 100 * time.Millisecond,
 		Budget:  10000,
 	}
 }

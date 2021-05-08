@@ -12,14 +12,15 @@ import (
 // It holds attributes that impacts the MCTS and the Neural Network
 // as well as object that facilitates the interactions with the end-user (eg: OutputEncoder).
 type Config struct {
-	Name            string
-	NNConf          dual.Config
-	MCTSConf        mcts.Config
-	UpdateThreshold float64
-	MaxExamples     int // maximum number of examples
+	Name            string      `json:"name"`
+	NNConf          dual.Config `json:"nn_conf"`
+	MCTSConf        mcts.Config `json:"mcts_conf"`
+	UpdateThreshold float64     `json:"update_threshold"`
+	// maximum number of examples
+	MaxExamples int `json:"max_examples"`
 
 	// extensions
-	Encoder   GameEncoder
+	Encoder GameEncoder
 }
 
 // GameEncoder encodes a game state as a slice of floats

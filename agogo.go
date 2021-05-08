@@ -2,10 +2,13 @@ package agogo
 
 import (
 	"encoding/gob"
+	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"math/rand"
 	"os"
+	"path/filepath"
 	"time"
 
 	dual "github.com/alphabeth/dualnet"
@@ -14,6 +17,18 @@ import (
 	"github.com/pkg/errors"
 	"gorgonia.org/tensor"
 )
+
+// constant variables.
+const (
+	metaFile  = "meta.json"
+	modelFile = "checkpoint.model"
+)
+
+// MetaData consists of exported params for model.
+type MetaData struct {
+	NNConf   dual.Config `json:"nn_conf"`
+	MCTSConf mcts.Config `json:"mcts_conf"`
+}
 
 // AZ is the top level structure and the entry point of the API.
 // It it a wrapper around the MTCS and the Neural Network that composes the algorithm.
@@ -41,17 +56,13 @@ func New(g game.State, conf Config) *AZ {
 	}
 
 	a := dual.New(conf.NNConf)
-	b := dual.New(conf.NNConf)
 
 	if err := a.Init(); err != nil {
 		panic(fmt.Sprintf("%+v", err))
 	}
-	if err := b.Init(); err != nil {
-		panic(fmt.Sprintf("%+v", err))
-	}
 
 	retVal := &AZ{
-		Arena:           MakeArena(g, a, b, conf.MCTSConf, conf.Encoder, conf.Name),
+		Arena:           MakeArena(g, a, conf.MCTSConf, conf.Encoder, conf.Name),
 		nnConf:          conf.NNConf,
 		mctsConf:        conf.MCTSConf,
 		enc:             conf.Encoder,
@@ -59,90 +70,6 @@ func New(g game.State, conf Config) *AZ {
 		maxExamples:     conf.MaxExamples,
 	}
 	return retVal
-}
-
-// Learn learns for iterations. It self-plays for episodes, and then trains a new NN from the self play example.
-// Finally we let 2 agents compete then get the best agent based on threshold.
-func (a *AZ) Learn(iters, episodes, nniters, arenaGames int) error {
-	var err error
-	for epoch := 0; epoch < iters; epoch++ {
-		var ex []Example
-		log.Printf("Self Play for epoch %d. Current best agent %p, current agent %p",
-			epoch, a.BestAgent, a.CurrentAgent)
-
-		for e := 0; e < episodes; e++ {
-			log.Printf("Episode %v\n", e)
-
-			// generates training examples
-			if exs, err := a.SelfPlay(); err != nil {
-				return err
-			} else {
-				ex = append(ex, exs...)
-			}
-		}
-
-		if a.maxExamples > 0 && len(ex) > a.maxExamples {
-			shuffleExamples(ex)
-			ex = ex[:a.maxExamples]
-		}
-		Xs, Policies, Values, batches := a.prepareExamples(ex)
-
-		if batches == 0 {
-			return errors.New("batches is nil, probably too few examples regarding the batchsize")
-		}
-
-		log.Print("begin training")
-		if err = dual.Train(a.CurrentAgent.NN, Xs, Policies, Values, batches, nniters); err != nil {
-			return errors.WithMessage(err, fmt.Sprintf("Train fail"))
-		}
-
-		if err = a.CurrentAgent.SwitchToInference(a.game); err != nil {
-			return err
-		}
-		if err = a.BestAgent.SwitchToInference(a.game); err != nil {
-			return err
-		}
-
-		a.CurrentAgent.resetStats()
-		a.BestAgent.resetStats()
-
-		log.Print("Playing Arena")
-		for a.gameNumber = 0; a.gameNumber < arenaGames; a.gameNumber++ {
-			log.Printf("Playing game number %d", a.gameNumber)
-			err := a.Play()
-			if err != nil {
-				return err
-			}
-		}
-
-		if err = a.BestAgent.Close(); err != nil {
-			return err
-		}
-		if err = a.CurrentAgent.Close(); err != nil {
-			return err
-		}
-
-		var killedA bool
-		log.Printf("Current best agent wins %v, loss %v, draw %v\ncurrent agent wins %v, loss %v, draw %v",
-			a.BestAgent.Wins, a.BestAgent.Loss, a.BestAgent.Draw,
-			a.CurrentAgent.Wins, a.CurrentAgent.Loss, a.CurrentAgent.Draw)
-
-		// plus 1 in case all draw it will be divided by 0
-		if a.CurrentAgent.Wins/(a.CurrentAgent.Wins+a.BestAgent.Wins + 1) > a.updateThreshold {
-			// B wins. Kill A, clean up its resources
-			log.Printf("Kill current best agent %p. New best agent's NN is %p", a.BestAgent.NN, a.CurrentAgent.NN)
-			a.BestAgent.NN = a.CurrentAgent.NN
-			// clear examples
-			ex = ex[:0]
-			killedA = true
-		}
-
-		// creat new agent if met condition
-		if err = a.newAgent(a.nnConf, killedA); err != nil {
-			return err
-		}
-	}
-	return nil
 }
 
 // Learn learns for iterations. It self-plays for episodes, and then trains a new NN from the self play example.
@@ -181,21 +108,30 @@ func (a *AZ) LearnAZ(iters, episodes, nniters int) error {
 	return nil
 }
 
-// Save AlphaGo into filename.
-func (a *AZ) Save(filename string) error {
-	f, err := os.OpenFile(filename, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0544)
+// Save AlphaZero into filename.
+func (a *AZ) SaveAZ(dirName string) error {
+	err := os.Mkdir(dirName, 0755)
 	if err != nil {
 		return err
 	}
-	defer f.Close()
 
-	enc := gob.NewEncoder(f)
-	return enc.Encode(a.BestAgent.NN)
-}
+	// Save config.
+	metaPath := filepath.Join(dirName, metaFile)
+	metaConf := &MetaData{
+		NNConf:   a.nnConf,
+		MCTSConf: a.mctsConf,
+	}
+	jsonStr, err := json.MarshalIndent(metaConf, "", "	")
+	if err != nil {
+		return err
+	}
+	err = ioutil.WriteFile(metaPath, jsonStr, 0544)
+	if err != nil {
+		return err
+	}
 
-// Save AlphaZero into filename.
-func (a *AZ) SaveAZ(filename string) error {
-	f, err := os.OpenFile(filename, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0544)
+	modelPath := filepath.Join(dirName, modelFile)
+	f, err := os.OpenFile(modelPath, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0544)
 	if err != nil {
 		return err
 	}
@@ -213,20 +149,44 @@ func (a *AZ) Load(filename string) error {
 	}
 	defer f.Close()
 
-	a.BestAgent.NN = dual.New(a.nnConf)
 	a.CurrentAgent.NN = dual.New(a.nnConf)
 
 	dec := gob.NewDecoder(f)
-	if err = dec.Decode(a.BestAgent.NN); err != nil {
-		return errors.WithStack(err)
-	}
-
-	f.Seek(0, 0)
-	dec = gob.NewDecoder(f)
 	if err = dec.Decode(a.CurrentAgent.NN); err != nil {
 		return errors.WithStack(err)
 	}
 	return nil
+}
+
+// Load loads model based on checkpoint and meta data.
+func Load(dirName, fileMoves string, encoder func(g game.State) []float32) (*AZ, error) {
+	metaPath := filepath.Join(dirName, metaFile)
+	metaStr, err := ioutil.ReadFile(metaPath)
+	if err != nil {
+		return nil, err
+	}
+	metaConf := &MetaData{}
+	err = json.Unmarshal(metaStr, metaConf)
+	if err != nil {
+		return nil, err
+	}
+
+	conf := Config{
+		Name:     "Alphabeth",
+		NNConf:   metaConf.NNConf,
+		MCTSConf: metaConf.MCTSConf,
+	}
+	conf.Encoder = encoder
+
+	modelPath := filepath.Join(dirName, modelFile)
+	g := game.ChessGame(fileMoves)
+	a := New(g, conf)
+	err = a.Load(modelPath)
+	if err != nil {
+		return nil, err
+	}
+
+	return a, nil
 }
 
 func (a *AZ) prepareExamples(examples []Example) (Xs, Policies, Values *tensor.Dense, batches int) {

@@ -2,17 +2,15 @@ package dual
 
 // Config configures the neural network
 type Config struct {
-	K            int     // number of filters
-	SharedLayers int     // number of shared residual blocks
-	FC           int     // fc layer width
-	L2           float64 // L2 regularization
-
-	BatchSize     int // batch size
-	Width, Height int // board size
-	Features      int // feature counts
-
-	ActionSpace int
-	FwdOnly     bool // is this a fwd only graph?
+	K            int     `json:"k"`             // number of filters
+	SharedLayers int     `json:"shared_layers"` // number of shared residual blocks
+	FC           int     `json:"fc"`            // fc layer width
+	BatchSize    int     `json:"batch_size"`    // batch size
+	Width        int     `json:"width"`
+	Height       int     `json:"height"`   // board size
+	Features     int     `json:"features"` // feature counts
+	ActionSpace  int     `json:"action_space"`
+	FwdOnly      bool    `json:"fwd_only"` // is this a fwd only graph?
 }
 
 func DefaultConf(m, n, actionSpace int) Config {
@@ -21,11 +19,11 @@ func DefaultConf(m, n, actionSpace int) Config {
 		K:            k,
 		SharedLayers: m,
 		FC:           2 * k,
-		BatchSize:   256,
-		Width:       n,
-		Height:      m,
-		Features:    18,
-		ActionSpace: actionSpace,
+		BatchSize:    256,
+		Width:        n,
+		Height:       m,
+		Features:     18,
+		ActionSpace:  actionSpace,
 	}
 }
 

@@ -18,13 +18,7 @@ type Agent struct {
 	MCTS   *mcts.MCTS
 	Player chess.Color
 	Enc    GameEncoder
-
-	// Statistics
-	Wins float32
-	Loss float32
-	Draw float32
 	sync.Mutex
-
 	name     string
 	actions  int
 	inferer  chan Inferer
@@ -33,13 +27,13 @@ type Agent struct {
 }
 
 // SwitchToInference uses the inference mode neural network.
-func (a *Agent) SwitchToInference(game game.State) (err error) {
+func (a *Agent) SwitchToInference() (err error) {
 	a.Lock()
 	a.inferer = make(chan Inferer, numCPU)
 
 	for i := 0; i < numCPU; i++ {
 		var inf Inferer
-		if inf, err = dual.Infer(a.NN, game.ActionSpace(),false); err != nil {
+		if inf, err = dual.Infer(a.NN, false); err != nil {
 			return err
 		}
 		a.inferers = append(a.inferers, inf)
@@ -85,12 +79,4 @@ func (a *Agent) Close() error {
 		return errs
 	}
 	return nil
-}
-
-func (a *Agent) resetStats() {
-	a.Lock()
-	a.Wins = 0
-	a.Loss = 0
-	a.Draw = 0
-	a.Unlock()
 }

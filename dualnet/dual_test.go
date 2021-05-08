@@ -89,7 +89,7 @@ func TestInferenceSanity(t *testing.T) {
 	if err := d.Init(); err != nil {
 		t.Fatalf("%+v", err)
 	}
-	inferer, err := Infer(d, boardSize*boardSize+1, false)
+	inferer, err := Infer(d, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -149,7 +149,7 @@ func TestInferencer_ExecLog(t *testing.T) {
 		t.Fatalf("%+v", err)
 	}
 
-	inferer, err := Infer(d, boardSize*boardSize+1, false)
+	inferer, err := Infer(d, false)
 	if err != nil {
 		t.Fatal(err)
 	}
