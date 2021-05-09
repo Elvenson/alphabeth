@@ -11,7 +11,9 @@ require (
 	github.com/notnil/chess v1.5.0
 	github.com/pkg/errors v0.9.1
 	github.com/stretchr/testify v1.6.1
-	golang.org/x/image v0.0.0-20201208152932-35266b937fa6
+	golang.org/x/exp v0.0.0-20210503015746-b3083d562e1d
+	golang.org/x/image v0.0.0-20210216034530-4410531fe030
+	gonum.org/v1/gonum v0.9.1
 	gorgonia.org/gorgonia v0.9.17-0.20210124090702-531c6df2c434
 	gorgonia.org/tensor v0.9.18
 	gorgonia.org/vecf32 v0.9.0

@@ -8,12 +8,14 @@ import (
 
 	"github.com/alphabeth/game"
 	"github.com/chewxy/math32"
+	distrand "golang.org/x/exp/rand"
+	"gonum.org/v1/gonum/stat/distmv"
 )
 
 // Config is the structure to configure the MCTS multitree (poorly named Tree)
 type Config struct {
 	// PUCT is the proportion of polynomial upper confidence trees to keep. Between 1 and 0
-	PUCT    float32
+	PUCT float32
 
 	RandomCount       int   // if the move number is less than this, we should randomize
 	Budget            int32 // iteration budget
@@ -25,8 +27,8 @@ type Config struct {
 
 func DefaultConfig() Config {
 	return Config{
-		PUCT:    1.0,
-		Budget:  10000,
+		PUCT:   1.0,
+		Budget: 10000,
 	}
 }
 
@@ -62,28 +64,32 @@ type MCTS struct {
 	// global policy values - useful for building policy vectors
 	cachedPolicies map[sa]float32
 
-	lumberjack
+	// Dirichlet noise for exploration
+	dirichletSample []float64
 }
 
 func New(game game.State, conf Config, nn Inferencer) *MCTS {
 	retVal := &MCTS{
-		Config: conf,
-		nn:     nn,
-		rand:   rand.New(rand.NewSource(time.Now().UnixNano())),
-
-		nodes: make([]Node, 0, 12288),
-		// children: make(map[naughty][]naughty),
-		children:  make([][]naughty, 0, 12288),
-
+		Config:   conf,
+		nn:       nn,
+		rand:     rand.New(rand.NewSource(time.Now().UnixNano())),
+		nodes:    make([]Node, 0, 12288),
+		children: make([][]naughty, 0, 12288),
 		searchState: searchState{
 			root:    nilNode,
 			current: game,
 		},
 
 		cachedPolicies: make(map[sa]float32),
-		lumberjack:     makeLumberJack(),
 	}
-	go retVal.start()
+
+	alpha := make([]float64, game.ActionSpace())
+	for i := 0; i < game.ActionSpace(); i++ {
+		alpha[i] = dirichletParam
+	}
+
+	dirichletDist := distmv.NewDirichlet(alpha, distrand.NewSource(uint64(time.Now().UnixNano())))
+	retVal.dirichletSample = dirichletDist.Rand(nil)
 	retVal.searchState.tree = ptrFromTree(retVal)
 	retVal.searchState.maxDepth = conf.MaxDepth
 	return retVal

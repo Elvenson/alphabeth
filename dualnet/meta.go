@@ -121,7 +121,7 @@ type Inferencer struct {
 	buf   *bytes.Buffer
 }
 
-// Infer takes a trained *Dual, and creates a interence data structure such that it'd be easy to infer
+// Infer takes a trained *Dual, and creates a inference data structure such that it'd be easy to infer
 func Infer(d *Dual, toLog bool) (*Inferencer, error) {
 	conf := d.Config
 	conf.FwdOnly = true

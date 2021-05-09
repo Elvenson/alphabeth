@@ -78,7 +78,7 @@ func New(g game.State, conf Config) *AZ {
 func (a *AZ) LearnAZ(iters, episodes, nniters int) error {
 	var err error
 	for epoch := 0; epoch < iters; epoch++ {
-		var ex []Example
+		var examples []Example
 		for e := 0; e < episodes; e++ {
 			log.Printf("Episode %v\n", e)
 
@@ -86,15 +86,15 @@ func (a *AZ) LearnAZ(iters, episodes, nniters int) error {
 			if exs, err := a.SelfPlay(); err != nil {
 				return err
 			} else {
-				ex = append(ex, exs...)
+				examples = append(examples, exs...)
 			}
 		}
 
-		if a.maxExamples > 0 && len(ex) > a.maxExamples {
-			shuffleExamples(ex)
-			ex = ex[:a.maxExamples]
+		if a.maxExamples > 0 && len(examples) > a.maxExamples {
+			shuffleExamples(examples)
+			examples = examples[:a.maxExamples]
 		}
-		Xs, Policies, Values, batches := a.prepareExamples(ex)
+		Xs, Policies, Values, batches := a.prepareExamples(examples)
 
 		if batches == 0 {
 			return errors.New("batches is nil, probably too few examples regarding the batchsize")

@@ -29,9 +29,9 @@ type Agent struct {
 // SwitchToInference uses the inference mode neural network.
 func (a *Agent) SwitchToInference() (err error) {
 	a.Lock()
-	a.inferer = make(chan Inferer, numCPU)
+	a.inferer = make(chan Inferer, a.MCTS.NumSimulation)
 
-	for i := 0; i < numCPU; i++ {
+	for i := 0; i < a.MCTS.NumSimulation; i++ {
 		var inf Inferer
 		if inf, err = dual.Infer(a.NN, false); err != nil {
 			return err

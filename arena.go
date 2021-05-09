@@ -1,9 +1,7 @@
 package agogo
 
 import (
-	"math/rand"
 	"runtime"
-	"time"
 
 	"github.com/alphabeth/game"
 	"github.com/alphabeth/mcts"
@@ -14,7 +12,6 @@ import (
 // Arena represents a game arena
 // Arena fulfils the interface game.MetaState
 type Arena struct {
-	r            *rand.Rand
 	game         game.State
 	CurrentAgent *Agent
 
@@ -22,12 +19,7 @@ type Arena struct {
 	conf mcts.Config
 
 	// only relevant to training
-	name       string
-	gameNumber int // which game is this in
-
-	// when to screw it all and just reinit a new NN
-	oldThresh int
-	oldCount  int
+	name string
 }
 
 // MakeArena makes an arena given a game.
@@ -40,12 +32,10 @@ func MakeArena(g game.State, a Dualer, conf mcts.Config, enc GameEncoder, name s
 	CurrentAgent.MCTS = mcts.New(g, conf, CurrentAgent)
 
 	return Arena{
-		r:            rand.New(rand.NewSource(time.Now().UnixNano())),
 		game:         g,
 		CurrentAgent: CurrentAgent,
 		conf:         conf,
 		name:         name,
-		oldThresh:    10,
 	}
 }
 
@@ -107,9 +97,6 @@ func (a *Arena) SelfPlay() (examples []Example, err error) {
 
 	return examples, nil
 }
-
-// GameNumber returns the
-func (a *Arena) GameNumber() int { return a.gameNumber }
 
 // Name of the game
 func (a *Arena) Name() string { return a.name }

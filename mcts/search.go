@@ -6,7 +6,6 @@ import (
 	"sort"
 	"sync"
 	"sync/atomic"
-	"time"
 
 	"github.com/alphabeth/game"
 	"github.com/chewxy/math32"
@@ -17,10 +16,7 @@ import (
 const (
 	MAXTREESIZE = 25000000 // a tree is at max allowed this many nodes - at about 56 bytes per node that is 1.2GB of memory required
 	epsilon     = 0.25     // For adding Dirichlet noise.
-)
-
-var (
-	dirichletDist = []float32{0.03, 0.15, 0.3}
+	dirichletParam = 0.3
 )
 
 // Inferencer is essentially the neural network
@@ -146,18 +142,8 @@ func (s *searchState) pipeline(current game.State, start naughty, depth int) (fl
 
 // dirichletNoise add Dirichlet noise according to AlphaZero paper
 // reference: https://stats.stackexchange.com/questions/322831/purpose-of-dirichlet-noise-in-the-alphazero-paper
-func dirichletNoise(legalMove int, p float32) float32 {
-	// Choose appropriate Dirichlet noise which is inverse proportional with number of legal moves
-	tmp := 1 / float32(legalMove)
-	var dirNoise float32
-	if tmp <= dirichletDist[0] {
-		dirNoise = dirichletDist[0]
-	} else if tmp <= dirichletDist[1] {
-		dirNoise = dirichletDist[1]
-	} else {
-		dirNoise = dirichletDist[2]
-	}
-	return (1-epsilon)*p + epsilon*dirNoise
+func (t *MCTS) dirichletNoise(index int32, p float32) float32 {
+	return (1-epsilon)*p + epsilon*float32(t.dirichletSample[index])
 }
 
 func (s *searchState) expandAndSimulate(parent naughty, state game.State) (float32, error) {
@@ -173,7 +159,6 @@ func (s *searchState) expandAndSimulate(parent naughty, state game.State) (float
 
 	var nodelist []pair
 	var legalSum float32
-	var legalMove int
 
 	for i := 0; i < s.current.ActionSpace(); i++ {
 		m, err := state.NNToMove(int32(i))
@@ -183,22 +168,19 @@ func (s *searchState) expandAndSimulate(parent naughty, state game.State) (float
 		if state.Check(m) {
 			nodelist = append(nodelist, pair{Score: policy[i], Move: int32(i)})
 			legalSum += policy[i]
-			legalMove++
 		}
 	}
 
 	if legalSum > math32.SmallestNonzeroFloat32 {
-		// renormalize
-		time.Sleep(1000 * time.Millisecond)
 		for i := range nodelist {
 			nodelist[i].Score /= legalSum
-			nodelist[i].Score = dirichletNoise(legalMove, nodelist[i].Score)
+			nodelist[i].Score = t.dirichletNoise(nodelist[i].Move, nodelist[i].Score)
 		}
 	} else {
 		prob := 1 / float32(len(nodelist))
 		for i := range nodelist {
 			nodelist[i].Score = prob
-			nodelist[i].Score = dirichletNoise(legalMove, nodelist[i].Score)
+			nodelist[i].Score = t.dirichletNoise(nodelist[i].Move, nodelist[i].Score)
 		}
 	}
 
