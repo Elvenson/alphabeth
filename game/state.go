@@ -42,4 +42,5 @@ type State interface {
 	Eq(other State) bool // check 2 states if they are equal or not.
 	Clone() State        // clone states.
 	ShowBoard()          // show the current board position.
+	Moves() []Move
 }

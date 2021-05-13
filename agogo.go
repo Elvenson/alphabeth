@@ -79,6 +79,7 @@ func (a *AZ) LearnAZ(iters, episodes, nniters int) error {
 	var err error
 	var exs []Example
 	for epoch := 0; epoch < iters; epoch++ {
+		log.Printf("Epoch %v\n", epoch)
 		var examples []Example
 		for e := 0; e < episodes; e++ {
 			log.Printf("Episode %v\n", e)
@@ -159,7 +160,7 @@ func (a *AZ) Load(filename string) error {
 }
 
 // Load loads model based on checkpoint and meta data.
-func Load(dirName, fileMoves string, encoder func(g game.State) []float32) (*AZ, error) {
+func Load(dirName string, g game.State, encoder func(g game.State) []float32) (*AZ, error) {
 	metaPath := filepath.Join(dirName, metaFile)
 	metaStr, err := ioutil.ReadFile(metaPath)
 	if err != nil {
@@ -179,7 +180,6 @@ func Load(dirName, fileMoves string, encoder func(g game.State) []float32) (*AZ,
 	conf.Encoder = encoder
 
 	modelPath := filepath.Join(dirName, modelFile)
-	g := game.ChessGame(fileMoves)
 	a := New(g, conf)
 	err = a.Load(modelPath)
 	if err != nil {

@@ -225,3 +225,12 @@ func (g *Chess) Clone() State {
 func (g *Chess) ShowBoard() {
 	fmt.Println(g.history[g.histPtr].Position().Board().Draw())
 }
+
+func (g *Chess) Moves() []Move {
+	moves := g.history[g.histPtr].ValidMoves()
+	moveList := make([]Move, len(moves))
+	for i, m := range moves {
+		moveList[i] = Move(m.String())
+	}
+	return moveList
+}
