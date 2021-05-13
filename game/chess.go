@@ -63,10 +63,6 @@ func (g *Chess) Board() *chess.Board {
 	return g.history[g.histPtr].Position().Board()
 }
 
-func (g *Chess) Hash() [16]byte {
-	return g.history[g.histPtr].Position().Hash()
-}
-
 func (g *Chess) Turn() chess.Color {
 	return g.history[g.histPtr].Position().Turn()
 }

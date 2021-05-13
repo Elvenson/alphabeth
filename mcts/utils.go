@@ -17,15 +17,7 @@ func (l fancySort) Less(i, j int) bool {
 	li := l.t.nodeFromNaughty(l.l[i])
 	lj := l.t.nodeFromNaughty(l.l[j])
 
-	liVisits := li.Visits()
-
-	// no visits, we sort on P(s, a)
-	if liVisits == 0 {
-		return li.PSA() > lj.PSA()
-	}
-
-	// if has visit count sort by Q(s, a)
-	return li.QSA() > lj.QSA()
+	return li.Pi() > lj.Pi()
 }
 
 // pair is a tuple of score and coordinate

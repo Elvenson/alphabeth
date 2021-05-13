@@ -16,12 +16,11 @@ const (
 // State is any game that implements these and are able to report back
 type State interface {
 	// These methods represent the game state
-	ActionSpace() int        // returns the number of permissible actions
-	Board() *chess.Board     // return board state.
-	Hash() [16]byte          // returns the hash of the board
-	Turn() chess.Color       // Turn returns the color to move next.
-	MoveNumber() int         // returns count of moves so far that led to this point.
-	LastMove() int32         // returns the last move that was made in neural network index.
+	ActionSpace() int                 // returns the number of permissible actions
+	Board() *chess.Board              // return board state.
+	Turn() chess.Color                // Turn returns the color to move next.
+	MoveNumber() int                  // returns count of moves so far that led to this point.
+	LastMove() int32                  // returns the last move that was made in neural network index.
 	NNToMove(idx int32) (Move, error) // returns move from neural network encoding output space.
 
 	// Meta-game stuff
@@ -42,25 +41,4 @@ type State interface {
 	Eq(other State) bool
 	Clone() State
 	ShowBoard()
-}
-
-// InputEncoder encodes game state to neural input format.
-func InputEncoder(g State) []float32 {
-	m := g.Board().SquareMap()
-	board := make([]float32, RowNum*ColNum)
-	for k, v := range m {
-		if v == chess.NoPiece {
-			board[int8(k)] = 0.001
-		} else {
-			board[int8(k)] = float32(v)
-		}
-	}
-
-	playerLayer := make([]float32, RowNum*ColNum)
-	next := g.Turn()
-	for i := range playerLayer {
-		playerLayer[i] = float32(next)
-	}
-	inputLayer := append(board, playerLayer...)
-	return inputLayer
 }

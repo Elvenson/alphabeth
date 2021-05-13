@@ -12,6 +12,7 @@ import (
 
 var (
 	fileMoves = flag.String("moves_file", "", "file containing chess moves")
+	modelPath = flag.String("model_path", "alphabeth", "Model checkpoint directory")
 )
 
 func main() {
@@ -31,12 +32,10 @@ func main() {
 	conf.NNConf.K = 3
 	conf.NNConf.SharedLayers = 3
 	conf.MCTSConf = mcts.Config{
-		PUCT:              1.0,
-		Budget:            1000,
+		PUCT:              1.5,
 		RandomCount:       10,
 		MaxDepth:          10000,
 		NumSimulation:     10,
-		RandomMinVisits:   0,
 		RandomTemperature: 10,
 	}
 
@@ -48,7 +47,7 @@ func main() {
 	}
 
 	log.Printf("Save model")
-	if err := a.SaveAZ("alphabeth"); err != nil {
+	if err := a.SaveAZ(*modelPath); err != nil {
 		log.Fatalf("error when saving model: %s", err)
 	}
 }

@@ -44,7 +44,8 @@ func (a *Agent) SwitchToInference() (err error) {
 	return nil
 }
 
-// Infer infers a bunch of moves based on the game state. This is mainly used to implement a Inferer such that the MCTS search can use it.
+// Infer infers a bunch of moves based on the game state.
+// This is mainly used to implement a Inferer such that the MCTS search can use it.
 func (a *Agent) Infer(g game.State) (policy []float32, value float32) {
 	input := a.Enc(g)
 	inf := <-a.inferer
@@ -61,12 +62,13 @@ func (a *Agent) Infer(g game.State) (policy []float32, value float32) {
 	return
 }
 
-// Search searches the game state and returns a suggested coordinate.
+// Search searches the game state and returns a suggested move.
 func (a *Agent) Search(g game.State) (game.Move, error) {
 	a.MCTS.SetGame(g)
 	return a.MCTS.Search()
 }
 
+// Close closes channel to free up memory.
 func (a *Agent) Close() error {
 	close(a.inferer)
 	var errs error

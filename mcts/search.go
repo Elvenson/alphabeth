@@ -1,6 +1,7 @@
 package mcts
 
 import (
+	"fmt"
 	"log"
 	"math/rand"
 	"sort"
@@ -14,8 +15,8 @@ import (
 )
 
 const (
-	MAXTREESIZE = 25000000 // a tree is at max allowed this many nodes - at about 56 bytes per node that is 1.2GB of memory required
-	epsilon     = 0.25     // For adding Dirichlet noise.
+	MAXTREESIZE    = 25000000 // a tree is at max allowed this many nodes - at about 56 bytes per node that is 1.2GB of memory required
+	epsilon        = 0.25     // For adding Dirichlet noise.
 	dirichletParam = 0.3
 )
 
@@ -37,9 +38,10 @@ func (s *searchState) nodeCount() int32 {
 	return atomic.LoadInt32(&t.nc)
 }
 
+// Search using Monte Carlo tree to do simulation and get the best move. Note that we should check for checkmate
+// first before running this function
 func (t *MCTS) Search() (game.Move, error) {
 	t.updateRoot()
-	boardHash := t.current.Hash()
 
 	for _, f := range t.freeables {
 		t.free(f)
@@ -60,23 +62,15 @@ func (t *MCTS) Search() (game.Move, error) {
 
 	root := t.nodeFromNaughty(t.root)
 	if !root.HasChildren() {
-		policy, _ := t.nn.Infer(t.current)
-		moveID := argmax(policy)
-		m, err := t.current.NNToMove(int32(moveID))
-		if err != nil {
-			return "", err
-		}
-		return m, nil
+		return "", fmt.Errorf("no child node in tree")
 	}
 
+	t.updatePolicies()
 	m, err := t.current.NNToMove(t.bestMove())
 	if err != nil {
 		return "", err
 	}
 	t.prev = t.current.Clone().(game.State)
-
-	// update the cached policies.
-	t.cachedPolicies[sa{boardHash, m}]++
 
 	return m, nil
 }
@@ -206,8 +200,9 @@ func (t *MCTS) bestMove() int32 {
 	children := t.children[t.root]
 	sort.Sort(fancySort{l: children, t: t})
 
+	idx := 0
 	if moveNum < t.Config.RandomCount {
-		t.randomizeChildren(t.root)
+		idx = t.sampleChild()
 	}
 
 	// if no children set the current play move to resign and return.
@@ -216,8 +211,8 @@ func (t *MCTS) bestMove() int32 {
 		return game.Resign
 	}
 
-	firstChild := t.nodeFromNaughty(children[0])
-	bestMove := firstChild.Move()
+	child := t.nodeFromNaughty(children[idx])
+	bestMove := child.Move()
 	return bestMove
 }
 
@@ -292,4 +287,33 @@ func (t *MCTS) updateRoot() {
 	if len(children) == 0 {
 		root.SetHasChild(false)
 	}
+}
+
+func (t *MCTS) updatePolicies() {
+	var denominator float32
+	temp := float32(1.0)
+	if t.current.MoveNumber() < t.Config.RandomCount {
+		temp = t.Config.RandomTemperature
+	}
+	tree := treeFromUintptr(t.tree)
+	children := tree.Children(t.root)
+	for _, kid := range children {
+		child := tree.nodeFromNaughty(kid)
+		if child.IsValid() {
+			visits := child.Visits()
+			denominator += math32.Pow(float32(visits), 1/t.Config.RandomTemperature)
+		}
+	}
+
+	policies := make([]float32, t.current.ActionSpace())
+	for _, kid := range children {
+		child := tree.nodeFromNaughty(kid)
+		if child.IsValid() {
+			numerator := math32.Pow(float32(child.Visits()), 1/temp)
+			p := numerator / denominator
+			policies[child.Move()] = p
+			child.SetPi(p)
+		}
+	}
+	t.policies = policies
 }

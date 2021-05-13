@@ -35,7 +35,8 @@ type Node struct {
 	status      uint32  // status
 	qsa         float32 // the expected reward for taking action a from state s, i.e: Q(s,a)
 	hasChildren bool
-	psa         float32 // Neural network policy estimation for taking the move from state s, i.e: P(s, a)
+	psa         float32 // neural network policy estimation for taking the move from state s, i.e: P(s, a)
+	pi          float32 // improved policies
 
 	// naughty things
 	id   naughty // index to the children allocation
@@ -54,14 +55,6 @@ func (n *Node) AddChild(child naughty) {
 	tree.Lock()
 	tree.children[n.id] = append(tree.children[n.id], child)
 	tree.Unlock()
-}
-
-// IsFirstVisit returns true if this node hasn't ever been visited
-func (n *Node) IsNotVisited() bool {
-	n.lock.Lock()
-	defer n.lock.Unlock()
-	visits := n.visits
-	return visits == 0
 }
 
 // Update updates the accumulated score
@@ -161,7 +154,13 @@ func (n *Node) SetHasChild(f bool) {
 	n.hasChildren = f
 }
 
-func (n *Node) ID() int { return int(n.id) }
+func (n *Node) SetPi(p float32) {
+	n.pi = p
+}
+
+func (n *Node) Pi() float32 {
+	return n.pi
+}
 
 // Select selects the best child based on alpha zero paper
 // the upper bound formula is as such

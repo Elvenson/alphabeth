@@ -57,7 +57,7 @@ func (a *Arena) SelfPlay() (examples []Example, err error) {
 		}
 
 		boards := a.CurrentAgent.Enc(a.game)
-		policies, err := a.CurrentAgent.MCTS.Policies(a.game)
+		policies, err := a.CurrentAgent.MCTS.Policies()
 		if err != nil {
 			return nil, err
 		}

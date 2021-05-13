@@ -1,6 +1,7 @@
 package mcts
 
 import (
+	"fmt"
 	"math/rand"
 	"runtime"
 	"sync"
@@ -17,9 +18,7 @@ type Config struct {
 	// PUCT is the proportion of polynomial upper confidence trees to keep. Between 1 and 0
 	PUCT float32
 
-	RandomCount       int   // if the move number is less than this, we should randomize
-	Budget            int32 // iteration budget
-	RandomMinVisits   uint32
+	RandomCount       int // if the move number is less than this, we should randomize
 	RandomTemperature float32
 	MaxDepth          int
 	NumSimulation     int // Be careful with this config it can cause goroutine starvation.
@@ -27,19 +26,12 @@ type Config struct {
 
 func DefaultConfig() Config {
 	return Config{
-		PUCT:   1.0,
-		Budget: 10000,
+		PUCT: 1.0,
 	}
 }
 
 func (c Config) IsValid() bool {
-	return c.PUCT > 0 && c.PUCT <= 1
-}
-
-// sa is a state-action tuple, used for storing results
-type sa struct {
-	s [16]byte
-	a game.Move
+	return c.RandomTemperature > 0 && c.NumSimulation > 0
 }
 
 // MCTS is essentially a "global" manager of sorts for the memories. The goal is to build MCTS without much pointer chasing.
@@ -59,10 +51,8 @@ type MCTS struct {
 
 	// global searchState
 	searchState
-	nc int32 // atomic pls
-
-	// global policy values - useful for building policy vectors
-	cachedPolicies map[sa]float32
+	nc       int32 // atomic pls
+	policies []float32
 
 	// Dirichlet noise for exploration
 	dirichletSample []float64
@@ -80,7 +70,7 @@ func New(game game.State, conf Config, nn Inferencer) *MCTS {
 			current: game,
 		},
 
-		cachedPolicies: make(map[sa]float32),
+		policies: nil,
 	}
 
 	alpha := make([]float64, game.ActionSpace())
@@ -119,25 +109,11 @@ func (t *MCTS) SetGame(g game.State) {
 
 func (t *MCTS) Nodes() int { return len(t.nodes) }
 
-func (t *MCTS) Policies(g game.State) ([]float32, error) {
-	hash := g.Hash()
-	var sum float32
-	retVal := make([]float32, g.ActionSpace())
-	for i := 0; i < g.ActionSpace(); i++ {
-		m, err := t.current.NNToMove(int32(i))
-		if err != nil {
-			return nil, err
-		}
-		if t.current.Check(m) {
-			prob := t.cachedPolicies[sa{s: hash, a: m}]
-			retVal[i] = prob
-			sum += prob
-		}
+func (t *MCTS) Policies() ([]float32, error) {
+	if t.policies == nil {
+		return nil, fmt.Errorf("empty policies")
 	}
-	for i := 0; i < len(retVal); i++ {
-		retVal[i] /= sum
-	}
-	return retVal, nil
+	return t.policies, nil
 }
 
 // alloc tries to get a node from the free list. If none is found a new node is allocated into the master arena
@@ -205,28 +181,27 @@ func (t *MCTS) cleanChildren(root naughty) {
 	t.Unlock()
 }
 
-// randomizeChildren proportionally randomizes the children nodes by proportion of the visit
-func (t *MCTS) randomizeChildren(of naughty) {
-	var accum, norm float32
+// sampleChild samples a child from children according to distribution.
+func (t *MCTS) sampleChild() int {
+	var accum, denominator float32
 	var accumVector []float32
-	children := t.Children(of)
+	children := t.Children(t.root)
 	for _, kid := range children {
 		child := t.nodeFromNaughty(kid)
-		visits := child.Visits()
-		if norm == 0 {
-			norm = float32(visits)
-
-			// nonsensical options
-			if visits <= t.Config.RandomMinVisits {
-				return
-			}
-		}
-		if visits > t.Config.RandomMinVisits {
-			accum += math32.Pow(float32(visits)/norm, 1/t.Config.RandomTemperature)
-			accumVector = append(accumVector, accum)
+		if child.IsValid() {
+			visits := child.Visits()
+			denominator += math32.Pow(float32(visits), 1/t.Config.RandomTemperature)
 		}
 	}
-	rnd := t.rand.Float32() * accum // uniform distro: rnd() * (max-min) + min
+
+	for _, kid := range children {
+		child := t.nodeFromNaughty(kid)
+		numerator := math32.Pow(float32(child.Visits()), 1/t.Config.RandomTemperature)
+		accum += numerator / denominator
+		accumVector = append(accumVector, accum)
+	}
+
+	rnd := t.rand.Float32()
 	var index int
 	for i, a := range accumVector {
 		if rnd < a {
@@ -234,12 +209,8 @@ func (t *MCTS) randomizeChildren(of naughty) {
 			break
 		}
 	}
-	if index == 0 {
-		return
-	}
 
-	children[0], children[index] = children[index], children[0]
-
+	return index
 }
 
 func (t *MCTS) Reset() {
@@ -263,6 +234,6 @@ func (t *MCTS) Reset() {
 	}
 
 	t.nodes = t.nodes[:0]
-	t.cachedPolicies = make(map[sa]float32)
+	t.policies = nil
 	runtime.GC()
 }

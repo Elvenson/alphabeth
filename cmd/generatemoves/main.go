@@ -13,14 +13,15 @@ import (
 )
 
 var (
-	numGameFlag = flag.Int("num_game", 10, "number of game to play")
+	numGameFlag   = flag.Int("num_game", 10, "number of game to play")
+	chessMovePath = flag.String("path", "chess_moves.txt", "chess possible moves path to generate to")
 )
 
 func main() {
 	flag.Parse()
 
 	// If the file doesn't exist, create it, or append to the file
-	f, err := os.OpenFile("chess_moves.txt", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	f, err := os.OpenFile(*chessMovePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
 		log.Fatal(err)
 	}

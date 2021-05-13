@@ -10,7 +10,7 @@ import (
 
 var (
 	fileMoves = flag.String("moves_file", "", "file containing chess moves")
-	dirName = flag.String("model_path", "", "directory contains trained model")
+	dirName   = flag.String("model_path", "", "directory contains trained model")
 )
 
 func main() {
