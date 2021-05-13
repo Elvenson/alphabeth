@@ -60,7 +60,12 @@ A file named `chess_moves.txt` will be created which contains legal possible mov
 Any contribution is greatly appreciated since some of the detail in AlphaZero paper has not been implemented 
 or can be misunderstood by me.
 
-Before creating a pull request, please also test your changes with:
+Before creating a pull request, please format your code with this command:
+```shell script
+make fmt
+```
+
+And test your changes with:
 ```shell script
 make ci
 ```

@@ -8,7 +8,10 @@ import (
 	"gorgonia.org/tensor"
 )
 
-var Float = G.Float32
+// variables for dual net.
+var (
+	Float = G.Float32
+)
 
 // Dual is the whole neural network architecture of the dual network.
 //
@@ -38,6 +41,7 @@ func New(conf Config) *Dual {
 	return retVal
 }
 
+// Init inits neural network.
 func (d *Dual) Init() error {
 	d.reset()
 	d.g = G.NewGraph()
@@ -131,6 +135,7 @@ func (d *Dual) bwd(actionSpace int, logits, valueOutput *G.Node) error {
 	return nil
 }
 
+// Model returns model weights.
 func (d *Dual) Model() G.Nodes {
 	retVal := make(G.Nodes, 0, d.g.Nodes().Len())
 	for _, n := range d.g.AllNodes() {
@@ -141,12 +146,14 @@ func (d *Dual) Model() G.Nodes {
 	return retVal
 }
 
+// SetTesting ...
 func (d *Dual) SetTesting() {
 	for _, op := range d.ops {
 		op.SetTesting()
 	}
 }
 
+// Clone clones neural network with their weights.
 func (d *Dual) Clone() (*Dual, error) {
 	d2 := New(d.Config)
 	if err := d2.Init(); err != nil {
@@ -177,6 +184,7 @@ func (d *Dual) reset() {
 	d.policyOutput = nil
 }
 
+// GobEncode encodes neural network in bytes.
 func (d *Dual) GobEncode() (retVal []byte, err error) {
 	var buf bytes.Buffer
 	enc := gob.NewEncoder(&buf)
@@ -189,6 +197,7 @@ func (d *Dual) GobEncode() (retVal []byte, err error) {
 	return buf.Bytes(), nil
 }
 
+// GobDecode decodes bytes to neural network.
 func (d *Dual) GobDecode(p []byte) error {
 	d.reset()
 	d.Init()

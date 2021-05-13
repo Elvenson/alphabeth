@@ -7,7 +7,7 @@ import (
 // fancySort sorts the list of nodes under a certain condition of evaluation (i.e. which colour are we considering)
 // it sorts in such a way that nils get put at the back
 type fancySort struct {
-	l []naughty
+	l []Naughty
 	t *MCTS
 }
 

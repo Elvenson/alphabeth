@@ -39,7 +39,7 @@ func MakeArena(g game.State, a Dualer, conf mcts.Config, enc GameEncoder, name s
 	}
 }
 
-// SelfPlays lets the agent to generate training data by playing with itself.
+// SelfPlay lets the agent to generate training data by playing with itself.
 func (a *Arena) SelfPlay() (examples []Example, err error) {
 	if err := a.CurrentAgent.SwitchToInference(); err != nil {
 		return nil, err

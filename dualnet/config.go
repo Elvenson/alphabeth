@@ -13,6 +13,7 @@ type Config struct {
 	FwdOnly      bool `json:"fwd_only"`      // is this a fwd only graph?
 }
 
+// DefaultConf returns default config for neural network.
 func DefaultConf(m, n, actionSpace int) Config {
 	k := round((m * n) / 3)
 	return Config{
@@ -27,6 +28,7 @@ func DefaultConf(m, n, actionSpace int) Config {
 	}
 }
 
+// IsValid checks if mcts config is valid or not.
 func (conf Config) IsValid() bool {
 	return conf.K >= 1 &&
 		conf.ActionSpace >= 3 &&

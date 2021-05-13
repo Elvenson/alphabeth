@@ -22,7 +22,6 @@ help h:
 		printf "%s\n" $$help_info; \
 	done
 
-
 lint:	## Lint the codebase.
 	@golint -set_exit_status ./...
 

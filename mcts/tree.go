@@ -24,12 +24,14 @@ type Config struct {
 	NumSimulation     int // Be careful with this config it can cause goroutine starvation.
 }
 
+// DefaultConfig returns default config.
 func DefaultConfig() Config {
 	return Config{
 		PUCT: 1.0,
 	}
 }
 
+// IsValid checks config parameters.
 func (c Config) IsValid() bool {
 	return c.RandomTemperature > 0 && c.NumSimulation > 0
 }
@@ -43,11 +45,11 @@ type MCTS struct {
 
 	// memory related fields
 	nodes []Node
-	// children  map[naughty][]naughty
-	children [][]naughty
+	// children  map[Naughty][]Naughty
+	children [][]Naughty
 
-	freelist  []naughty
-	freeables []naughty // list of nodes that can be freed
+	freelist  []Naughty
+	freeables []Naughty // list of nodes that can be freed
 
 	// global searchState
 	searchState
@@ -58,13 +60,14 @@ type MCTS struct {
 	dirichletSample []float64
 }
 
+// New creates new mcts tree.
 func New(game game.State, conf Config, nn Inferencer) *MCTS {
 	retVal := &MCTS{
 		Config:   conf,
 		nn:       nn,
 		rand:     rand.New(rand.NewSource(time.Now().UnixNano())),
 		nodes:    make([]Node, 0, 12288),
-		children: make([][]naughty, 0, 12288),
+		children: make([][]Naughty, 0, 12288),
 		searchState: searchState{
 			root:    nilNode,
 			current: game,
@@ -86,7 +89,7 @@ func New(game game.State, conf Config, nn Inferencer) *MCTS {
 }
 
 // New creates a new node
-func (t *MCTS) New(move int32, score float32) (retVal naughty) {
+func (t *MCTS) New(move int32, score float32) (retVal Naughty) {
 	n := t.alloc()
 	N := t.nodeFromNaughty(n)
 	N.lock.Lock()
@@ -107,8 +110,10 @@ func (t *MCTS) SetGame(g game.State) {
 	t.Unlock()
 }
 
+// Nodes returns list of nodes.
 func (t *MCTS) Nodes() int { return len(t.nodes) }
 
+// Policies returns mcts policies.
 func (t *MCTS) Policies() ([]float32, error) {
 	if t.policies == nil {
 		return nil, fmt.Errorf("empty policies")
@@ -117,7 +122,7 @@ func (t *MCTS) Policies() ([]float32, error) {
 }
 
 // alloc tries to get a node from the free list. If none is found a new node is allocated into the master arena
-func (t *MCTS) alloc() naughty {
+func (t *MCTS) alloc() Naughty {
 	t.Lock()
 	defer t.Unlock()
 	l := len(t.freelist)
@@ -125,12 +130,12 @@ func (t *MCTS) alloc() naughty {
 		N := Node{
 			lock:        sync.Mutex{},
 			tree:        ptrFromTree(t),
-			id:          naughty(len(t.nodes)),
+			id:          Naughty(len(t.nodes)),
 			hasChildren: false,
 		}
 		t.nodes = append(t.nodes, N)
-		t.children = append(t.children, make([]naughty, 0, t.current.ActionSpace()))
-		n := naughty(len(t.nodes) - 1)
+		t.children = append(t.children, make([]Naughty, 0, t.current.ActionSpace()))
+		n := Naughty(len(t.nodes) - 1)
 		return n
 	}
 
@@ -144,7 +149,7 @@ func (t *MCTS) alloc() naughty {
 // Because the there isn't really strong reference tracking, there may be
 // use-after-free issues. Therefore it's absolutely vital that any calls to free()
 // has to be done with careful consideration.
-func (t *MCTS) free(n naughty) {
+func (t *MCTS) free(n Naughty) {
 	// delete(t.children, n)
 	t.children[int(n)] = t.children[int(n)][:0]
 	t.freelist = append(t.freelist, n)
@@ -153,7 +158,7 @@ func (t *MCTS) free(n naughty) {
 }
 
 // cleanup cleans up the graph (WORK IN PROGRESS)
-func (t *MCTS) cleanup(oldRoot, newRoot naughty) {
+func (t *MCTS) cleanup(oldRoot, newRoot Naughty) {
 	children := t.Children(oldRoot)
 	// we aint going down other paths, those nodes can be freed
 	for _, kid := range children {
@@ -169,7 +174,7 @@ func (t *MCTS) cleanup(oldRoot, newRoot naughty) {
 	t.Unlock()
 }
 
-func (t *MCTS) cleanChildren(root naughty) {
+func (t *MCTS) cleanChildren(root Naughty) {
 	children := t.Children(root)
 	for _, kid := range children {
 		t.nodeFromNaughty(kid).Invalidate()
@@ -213,6 +218,7 @@ func (t *MCTS) sampleChild() int {
 	return index
 }
 
+// Reset resets mcts tree.
 func (t *MCTS) Reset() {
 	t.Lock()
 	defer t.Unlock()

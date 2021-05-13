@@ -7,14 +7,17 @@ import (
 	"github.com/chewxy/math32"
 )
 
+// Status nodes status.
 type Status uint32
 
+// mcts constant variables.
 const (
 	Invalid Status = iota
 	Active
 	Pruned
 )
 
+// String returns node status.
 func (a Status) String() string {
 	switch a {
 	case Invalid:
@@ -27,6 +30,7 @@ func (a Status) String() string {
 	return "UNKNOWN STATUS"
 }
 
+// Node ...
 type Node struct {
 	// should guarantee thread-safe operation
 	lock        sync.Mutex
@@ -38,11 +42,12 @@ type Node struct {
 	psa         float32 // neural network policy estimation for taking the move from state s, i.e: P(s, a)
 	pi          float32 // improved policies
 
-	// naughty things
-	id   naughty // index to the children allocation
+	// Naughty things
+	id   Naughty // index to the children allocation
 	tree uintptr // pointer to the tree
 }
 
+// Format formats print.
 func (n *Node) Format(s fmt.State, c rune) {
 	fmt.Fprintf(s, "{NodeID: %v, Move: %v,"+
 		" Q(s,a) %v, P(s,a) %v, Visits %v, Status: %v}", n.id, n.Move(), n.QSA(), n.PSA(),
@@ -50,7 +55,7 @@ func (n *Node) Format(s fmt.State, c rune) {
 }
 
 // AddChild adds a child to the node
-func (n *Node) AddChild(child naughty) {
+func (n *Node) AddChild(child Naughty) {
 	tree := treeFromUintptr(n.tree)
 	tree.Lock()
 	tree.children[n.id] = append(tree.children[n.id], child)
@@ -61,7 +66,7 @@ func (n *Node) AddChild(child naughty) {
 func (n *Node) Update(score float32) {
 	n.accumulate(score)
 	n.lock.Lock()
-	n.visits += 1
+	n.visits++
 	n.lock.Unlock()
 }
 
@@ -89,6 +94,7 @@ func (n *Node) PSA() float32 {
 	return v
 }
 
+// Visits returns number of visits to this node.
 func (n *Node) Visits() uint32 {
 	n.lock.Lock()
 	defer n.lock.Unlock()
@@ -148,16 +154,19 @@ func (n *Node) HasChildren() bool {
 	return n.hasChildren
 }
 
+// SetHasChild set has child flag
 func (n *Node) SetHasChild(f bool) {
 	n.lock.Lock()
 	defer n.lock.Unlock()
 	n.hasChildren = f
 }
 
+// SetPi sets Pi.
 func (n *Node) SetPi(p float32) {
 	n.pi = p
 }
 
+// Pi returns Pi.
 func (n *Node) Pi() float32 {
 	return n.pi
 }
@@ -177,7 +186,7 @@ func (n *Node) Pi() float32 {
 //
 // Given the state and action is already known and encoded into Node itself,it doesn't have to be a function
 // like in most MCTS tutorials. This allows it to be slightly more performant (i.e. a AoS-ish data structure)
-func (n *Node) Select() naughty {
+func (n *Node) Select() Naughty {
 	var parentVisits uint32
 
 	tree := treeFromUintptr(n.tree)
@@ -246,7 +255,7 @@ func (n *Node) countChildren() (retVal int) {
 }
 
 // findChild finds the first child that has the wanted move
-func (n *Node) findChild(move int32) naughty {
+func (n *Node) findChild(move int32) Naughty {
 	tree := treeFromUintptr(n.tree)
 	children := tree.Children(n.id)
 	for _, kid := range children {

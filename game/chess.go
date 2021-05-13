@@ -10,6 +10,7 @@ import (
 	"github.com/notnil/chess"
 )
 
+// Chess struct
 type Chess struct {
 	sync.Mutex
 	history            []chess.Game
@@ -55,45 +56,53 @@ func ChessGame(movesFile string) *Chess {
 	}
 }
 
+// ActionSpace returns the number of permissible actions.
 func (g *Chess) ActionSpace() int {
 	return len(g.actionSpace)
 }
 
+// Board returns board state.
 func (g *Chess) Board() *chess.Board {
 	return g.history[g.histPtr].Position().Board()
 }
 
+// Turn returns the color to move next.
 func (g *Chess) Turn() chess.Color {
 	return g.history[g.histPtr].Position().Turn()
 }
 
+// MoveNumber returns count of moves so far that led to this point.
 func (g *Chess) MoveNumber() int {
 	return g.histPtr
 }
 
+// LastMove returns the last move that was made in neural network index.
 func (g *Chess) LastMove() int32 {
+	var idx int32
+	var ok bool
 	if g.histPtr == 0 { // at the beginning no move
 		return -1
 	}
 	lastG := g.history[g.histPtr]
 	moveHist := lastG.Moves()
 	m := Move(moveHist[len(moveHist)-1].String())
-	if idx, ok := g.reverseActionSpace[m]; !ok {
+	if idx, ok = g.reverseActionSpace[m]; !ok {
 		log.Panicf("move out of range: %s", m)
-		return -1
-	} else {
-		return idx
 	}
+	return idx
 }
 
+// NNToMove returns move from neural network encoding output space.
 func (g *Chess) NNToMove(idx int32) (Move, error) {
-	if m, ok := g.actionSpace[idx]; !ok {
+	var m Move
+	var ok bool
+	if m, ok = g.actionSpace[idx]; !ok {
 		return "", fmt.Errorf("invalid index: %d", idx)
-	} else {
-		return m, nil
 	}
+	return m, nil
 }
 
+// Ended returns true if ended and the winner color.
 func (g *Chess) Ended() (ended bool, winner chess.Color) {
 	r := g.history[g.histPtr].Outcome()
 	if r == chess.NoOutcome {
@@ -113,10 +122,12 @@ func (g *Chess) Ended() (ended bool, winner chess.Color) {
 	return
 }
 
+// Resign resigns the game and mark the game as ended.
 func (g *Chess) Resign(color chess.Color) {
 	g.history[g.histPtr].Resign(color)
 }
 
+// Check checks if the placement is legal.
 func (g *Chess) Check(m Move) bool {
 	moves := g.history[g.histPtr].ValidMoves()
 	for _, move := range moves {
@@ -128,6 +139,7 @@ func (g *Chess) Check(m Move) bool {
 	return false
 }
 
+// Apply applies move and return new state.
 func (g *Chess) Apply(m Move) State {
 	newG := g.history[g.histPtr].Clone()
 	err := newG.MoveStr(string(m))
@@ -147,6 +159,7 @@ func (g *Chess) Apply(m Move) State {
 	return g
 }
 
+// PossibleMoves gets all possible moves in output index format.
 func (g *Chess) PossibleMoves() []int32 {
 	moves := g.history[g.histPtr].ValidMoves()
 	mIdx := make([]int32, len(moves))
@@ -156,23 +169,27 @@ func (g *Chess) PossibleMoves() []int32 {
 	return mIdx
 }
 
+// Reset resets state.
 func (g *Chess) Reset() {
 	g.history = g.history[:1] // reset to first state
 	g.histPtr = 0
 }
 
+// UndoLastMove undoes last move.
 func (g *Chess) UndoLastMove() {
 	if g.histPtr > 0 {
 		g.histPtr--
 	}
 }
 
+// Fwd forwards move history
 func (g *Chess) Fwd() {
 	if g.histPtr < len(g.history)-1 {
 		g.histPtr++
 	}
 }
 
+// Eq checks if 2 stats are equal or not.
 func (g *Chess) Eq(other State) bool {
 	ot, ok := other.(*Chess)
 	if !ok {
@@ -182,6 +199,7 @@ func (g *Chess) Eq(other State) bool {
 
 }
 
+// Clone clones state.
 func (g *Chess) Clone() State {
 	g.Lock()
 	n := &Chess{
@@ -203,6 +221,7 @@ func (g *Chess) Clone() State {
 	return n
 }
 
+// ShowBoard show the current board position.
 func (g *Chess) ShowBoard() {
 	fmt.Println(g.history[g.histPtr].Position().Board().Draw())
 }

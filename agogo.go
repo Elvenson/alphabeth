@@ -72,22 +72,22 @@ func New(g game.State, conf Config) *AZ {
 	return retVal
 }
 
-// Learn learns for iterations. It self-plays for episodes, and then trains a new NN from the self play example.
+// LearnAZ learns for iterations. It self-plays for episodes, and then trains a new NN from the self play example.
 // The difference between this and `Learn` function is that in Alpha Zero we just simply store the latest model
 // no need compete with the current best agent.
 func (a *AZ) LearnAZ(iters, episodes, nniters int) error {
 	var err error
+	var exs []Example
 	for epoch := 0; epoch < iters; epoch++ {
 		var examples []Example
 		for e := 0; e < episodes; e++ {
 			log.Printf("Episode %v\n", e)
 
 			// generates training examples
-			if exs, err := a.SelfPlay(); err != nil {
+			if exs, err = a.SelfPlay(); err != nil {
 				return err
-			} else {
-				examples = append(examples, exs...)
 			}
+			examples = append(examples, exs...)
 		}
 
 		if a.maxExamples > 0 && len(examples) > a.maxExamples {
@@ -108,7 +108,7 @@ func (a *AZ) LearnAZ(iters, episodes, nniters int) error {
 	return nil
 }
 
-// Save AlphaZero into filename.
+// SaveAZ saves AlphaZero into filename.
 func (a *AZ) SaveAZ(dirName string) error {
 	err := os.Mkdir(dirName, 0755)
 	if err != nil {

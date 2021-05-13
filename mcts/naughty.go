@@ -1,10 +1,10 @@
 package mcts
 
-// naughty is essentially *Node
-type naughty int
+// Naughty is essentially *Node
+type Naughty int
 
-func (n naughty) isValid() bool { return n >= 0 }
+func (n Naughty) isValid() bool { return n >= 0 }
 
 const (
-	nilNode naughty = -1
+	nilNode Naughty = -1
 )

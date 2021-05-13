@@ -1,0 +1,5 @@
+.idea
+cmd/train/train
+cmd/infer/infer
+cmd/generatemoves/generatemoves
+dualnet/cost.csv

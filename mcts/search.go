@@ -15,7 +15,7 @@ import (
 )
 
 const (
-	MAXTREESIZE    = 25000000 // a tree is at max allowed this many nodes - at about 56 bytes per node that is 1.2GB of memory required
+	maxTreeSize    = 25000000 // a tree is at max allowed this many nodes - at about 56 bytes per node that is 1.2GB of memory required
 	epsilon        = 0.25     // For adding Dirichlet noise.
 	dirichletParam = 0.3
 )
@@ -28,7 +28,7 @@ type Inferencer interface {
 type searchState struct {
 	tree          uintptr
 	current, prev game.State
-	root          naughty
+	root          Naughty
 	wg            *sync.WaitGroup
 	maxDepth      int
 }
@@ -79,7 +79,7 @@ func (t *MCTS) Search() (game.Move, error) {
 // SELECT, EXPAND, SIMULATE, BACKPROPAGATE.
 // Because of the recursive nature, the pipeline is altered a bit to be this:
 // EXPAND and SIMULATE, SELECT and RECURSE, BACKPROPAGATE.
-func (s *searchState) pipeline(current game.State, start naughty, depth int) (float32, error) {
+func (s *searchState) pipeline(current game.State, start Naughty, depth int) (float32, error) {
 	depth++
 	if depth > s.maxDepth {
 		log.Printf("reach max depth stop: %d", s.maxDepth)
@@ -99,7 +99,7 @@ func (s *searchState) pipeline(current game.State, start naughty, depth int) (fl
 		return 1, nil
 	}
 	nodeCount := s.nodeCount()
-	if nodeCount >= MAXTREESIZE {
+	if nodeCount >= maxTreeSize {
 		return 0, nil
 	}
 
@@ -140,7 +140,7 @@ func (t *MCTS) dirichletNoise(index int32, p float32) float32 {
 	return (1-epsilon)*p + epsilon*float32(t.dirichletSample[index])
 }
 
-func (s *searchState) expandAndSimulate(parent naughty, state game.State) (float32, error) {
+func (s *searchState) expandAndSimulate(parent Naughty, state game.State) (float32, error) {
 	t := treeFromUintptr(s.tree)
 	n := t.nodeFromNaughty(parent)
 
