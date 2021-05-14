@@ -117,7 +117,7 @@ func writeToHdfs(tarFile, hdfsPath string) error {
 
 func main() {
 	flag.Parse()
-	log.SetFlags(log.Ltime)
+	log.SetFlags(log.LstdFlags)
 	g := game.ChessGame(*fileMoves)
 
 	conf := agogo.Config{
